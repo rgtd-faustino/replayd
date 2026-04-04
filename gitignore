@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.env
+venv/
+.venv/
+
+# Buffer segments (never commit these)
+/tmp/replayd_buffer/
+*.mkv
+_concat.txt
+
+# Output clips
+*.mp4
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo

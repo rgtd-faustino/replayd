@@ -1,0 +1,17 @@
+[0;1;32m●[0m xdg-desktop-portal.service - Portal service
+     Loaded: loaded (]8;;file://MrCaveira.Home/usr/lib/systemd/user/xdg-desktop-portal.service\/usr/lib/systemd/user/xdg-desktop-portal.service]8;;\; static[0;1;38:5:185m[0m)
+    Drop-In: /usr/lib/systemd/user/service.d
+             └─]8;;file://MrCaveira.Home/usr/lib/systemd/user/service.d/10-timeout-abort.conf\10-timeout-abort.conf]8;;\
+     Active: [0;1;32mactive (running)[0m since Wed 2026-04-01 10:41:58 WEST; 1min 43s ago
+ Invocation: 6da28ebee5de41309ca021cf68b75251
+   Main PID: 2251 (xdg-desktop-por)
+      Tasks: 9[0;38:5:245m (limit: 18391)[0m
+     Memory: 5.8M (peak: 7.5M)
+        CPU: 139ms
+     CGroup: /user.slice/user-1000.slice/user@1000.service/session.slice/xdg-desktop-portal.service
+             └─[0;38:5:245m2251 /usr/libexec/xdg-desktop-portal[0m
+
+abr 01 10:41:56 bazzite systemd[1954]: Starting xdg-desktop-portal.service - Portal service...
+abr 01 10:41:58 bazzite systemd[1954]: Started xdg-desktop-portal.service - Portal service.
+abr 01 10:42:04 bazzite /usr/libexec/xdg-desktop-portal[2251]: [0;1;38:5:185m[0;1;39m[0;1;38:5:185mRealtime error: Could not get pidns for pid 3157: Could not fstatat ns/pid: Not a directory[0m
+abr 01 10:42:04 bazzite /usr/libexec/xdg-desktop-portal[2251]: [0;1;38:5:185m[0;1;39m[0;1;38:5:185mRealtime error: Could not get pidns for pid 3157: Could not fstatat ns/pid: Not a directory[0m

@@ -1,0 +1,11 @@
+# Python dependencies for replayd
+# Install with: pip3 install --user -r requirements.txt
+# (or just run install.sh which does this automatically)
+#
+# System dependencies (GStreamer, ffmpeg, PipeWire) are NOT listed here —
+# those are handled by install.sh.
+
+dbus-next>=0.2.3   # D-Bus / xdg-desktop-portal for Wayland screen capture
+evdev>=1.6.1       # Global hotkey listener via /dev/input (requires 'input' group)
+PyQt6>=6.4.0       # GUI: tray icon, main window, settings overlay
+qasync>=0.27.0     # Bridges Python asyncio with the Qt event loop

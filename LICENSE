@@ -1,0 +1,37 @@
+GNU GENERAL PUBLIC LICENSE
+Version 3, 29 June 2007
+
+Copyright (C) 2026 rgtd-faustino
+
+This program is free software: you can redistribute it and/or modify
+it under the terms of the GNU General Public License as published by
+the Free Software Foundation, either version 3 of the License, or
+(at your option) any later version.
+
+This program is distributed in the hope that it will be useful,
+but WITHOUT ANY WARRANTY; without even the implied warranty of
+MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+GNU General Public License for more details.
+
+You should have received a copy of the GNU General Public License
+along with this program. If not, see <https://www.gnu.org/licenses/>.
+
+---
+
+SUMMARY OF YOUR RIGHTS AND OBLIGATIONS UNDER GPL v3:
+
+You MAY:
+  - Use this software for any purpose (personal, commercial, etc.)
+  - Study and modify the source code
+  - Distribute copies of the original or modified versions
+
+You MUST, if you distribute or publish a modified version:
+  - Release the complete source code under GPL v3
+  - Clearly credit the original author (rgtd-faustino)
+  - Keep this license notice intact
+
+You MAY NOT:
+  - Distribute a modified version under a different (e.g. closed-source) license
+  - Remove or hide the original copyright notice
+
+Full license text: https://www.gnu.org/licenses/gpl-3.0.txt
