@@ -1,6 +1,5 @@
 """
 settings.py – Settings overlay for replayd
-Matches the dark amber design from replayd-design.html.
 
 SettingsOverlay is a QWidget child of the main card — it covers it with a
 semi-transparent scrim and slides a card in from the centre.
@@ -370,6 +369,8 @@ class SettingsOverlay(QWidget):
     COMBO_AUDIO = ['Game + Mic', 'Game only', 'Mic only']
     COMBO_AFTER = ['Enabled', 'Disabled']
     FORMATS     = ['mp4', 'mkv']
+    COMBO_CODEC = ['H.264 (VA-API)', 'H.265 / HEVC (VA-API)', 'AV1 (VA-API)', 'H.264 (Software)']
+    CODEC_KEYS  = ['h264', 'h265', 'av1', 'h264_soft']
 
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
@@ -475,6 +476,12 @@ class SettingsOverlay(QWidget):
         self.cb_format.addItems(['MP4', 'MKV'])
         self.cb_format.setStyleSheet(self._select_css())
         lay.addWidget(SettingsRow('Output format', 'Video container', self.cb_format))
+
+        # Video codec
+        self.cb_codec = QComboBox()
+        self.cb_codec.addItems(self.COMBO_CODEC)
+        self.cb_codec.setStyleSheet(self._select_css())
+        lay.addWidget(SettingsRow('Video codec', 'GPU encoder to use', self.cb_codec))
 
         # Output folder
         dir_w = self._make_folder_row()
@@ -628,6 +635,10 @@ class SettingsOverlay(QWidget):
         fmt = self.config.get('output_format', 'mp4').upper()
         self.cb_format.setCurrentIndex(0 if fmt == 'MP4' else 1)
 
+        codec = self.config.get('video_codec', 'h264')
+        codec_idx = self.CODEC_KEYS.index(codec) if codec in self.CODEC_KEYS else 0
+        self.cb_codec.setCurrentIndex(codec_idx)
+
         self._set_combo_text(self.cb_game_src, self.config.get('audio_source', 'auto'))
         self._set_combo_text(self.cb_mic_src,  self.config.get('mic_source',   'auto'))
         self._update_after_controls()
@@ -700,6 +711,7 @@ class SettingsOverlay(QWidget):
             'audio_source':   self.cb_game_src.currentText(),
             'mic_source':     self.cb_mic_src.currentText(),
             'output_format':  self.cb_format.currentText().lower(),
+            'video_codec':    self.CODEC_KEYS[self.cb_codec.currentIndex()],
             'output_dir':     self.le_outdir.text(),
         })
 

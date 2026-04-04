@@ -81,16 +81,45 @@ class BufferManager:
 
     # ── GStreamer pipeline ────────────────────────────────────────────────────
 
+    CODEC_MAP = {
+        'h264':      ('vah264enc', 'h264parse'),
+        'h265':      ('vah265enc', 'h265parse'),
+        'av1':       ('vav1enc',   'av1parse'),
+        'h264_soft': ('x264enc',   'h264parse'),
+    }
+
+    @staticmethod
+    def _probe_codecs() -> list[str]:
+        """Return list of available codec keys based on installed GStreamer elements."""
+        checks = {
+            'h264':      'vah264enc',
+            'h265':      'vah265enc',
+            'av1':       'vav1enc',
+            'h264_soft': 'x264enc',
+        }
+        available = []
+        for key, element in checks.items():
+            r = subprocess.run(
+                ['gst-inspect-1.0', element],
+                capture_output=True,
+            )
+            if r.returncode == 0:
+                available.append(key)
+        return available
+
     def _build_pipeline(self, game_src: str, mic_src: str, audio_mode: str) -> str:
         seg_pattern = str(self.seg_dir / 'seg_%05d.mkv')
         dur_ns      = self.seg_duration * 1_000_000_000
         caps        = 'audio/x-raw,rate=48000,channels=2'
 
+        codec_key        = self.cfg.get('video_codec', 'h264')
+        encoder, parser  = self.CODEC_MAP.get(codec_key, ('vah264enc', 'h264parse'))
+
         video = (
             f'pipewiresrc path={self.node_id} do-timestamp=true ! '
             f'videoconvert ! '
-            f'vah264enc ! '
-            f'h264parse ! '
+            f'{encoder} ! '
+            f'{parser} ! '
             f'queue ! '
             f'splitmuxsink name=mux '
             f'location={seg_pattern} '
@@ -132,6 +161,15 @@ class BufferManager:
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self):
+        available = self._probe_codecs()
+        codec_key = self.cfg.get('video_codec', 'h264')
+        if codec_key not in available:
+            fallback = 'h264_soft' if 'h264_soft' in available else (available[0] if available else 'h264_soft')
+            print(f'[Buffer] Codec "{codec_key}" not available, falling back to "{fallback}"')
+            codec_key = fallback
+            self.cfg['video_codec'] = codec_key
+        print(f'[Buffer] Codec: {codec_key}  (available: {available})')
+
         audio_mode = self.cfg.get('audio_mode', 'both')
 
         game_src = self.cfg.get('audio_source', 'auto')
