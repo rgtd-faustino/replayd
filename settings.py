@@ -536,48 +536,12 @@ class SettingsOverlay(QWidget):
         h.addWidget(unit_lbl)
         return w
 
-    def _make_source_combo(self, list_fn) -> QWidget:
-        w = QWidget()
-        w.setStyleSheet('background:transparent;border:none;')
-        h = QHBoxLayout(w)
-        h.setContentsMargins(0, 0, 0, 0)
-        h.setSpacing(6)
-
+    def _make_source_combo(self, list_fn) -> QComboBox:
         cb = QComboBox()
-        cb.setFixedWidth(180)
-        cb.setStyleSheet(self._select_css(width=180))
+        cb.setStyleSheet(self._select_css(width=152))
         cb.addItem('auto')
         cb.addItems(list_fn())
-
-        refresh = QPushButton('↻')
-        refresh.setFixedSize(28, 28)
-        refresh.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        refresh.setToolTip('Refresh device list')
-        refresh.setStyleSheet(f'''
-            QPushButton {{
-                background: {S2}; border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 7px; color: {TX2}; font-size: 14px;
-            }}
-            QPushButton:hover {{ background: {S3}; color: {TX}; }}
-        ''')
-        # Store combo ref on widget so we can grab it later
-        w._combo = cb
-        refresh.clicked.connect(lambda: self._refresh_combo(cb, list_fn))
-
-        h.addWidget(cb)
-        h.addWidget(refresh)
-        return w
-
-    @staticmethod
-    def _refresh_combo(cb: QComboBox, list_fn):
-        current = cb.currentText()
-        cb.blockSignals(True)
-        cb.clear()
-        cb.addItem('auto')
-        cb.addItems(list_fn())
-        idx = cb.findText(current)
-        cb.setCurrentIndex(idx if idx >= 0 else 0)
-        cb.blockSignals(False)
+        return cb
 
     def _make_folder_row(self) -> QWidget:
         w = QWidget()
@@ -664,8 +628,8 @@ class SettingsOverlay(QWidget):
         fmt = self.config.get('output_format', 'mp4').upper()
         self.cb_format.setCurrentIndex(0 if fmt == 'MP4' else 1)
 
-        self._set_combo_text(self.cb_game_src._combo, self.config.get('audio_source', 'auto'))
-        self._set_combo_text(self.cb_mic_src._combo,  self.config.get('mic_source',   'auto'))
+        self._set_combo_text(self.cb_game_src, self.config.get('audio_source', 'auto'))
+        self._set_combo_text(self.cb_mic_src,  self.config.get('mic_source',   'auto'))
         self._update_after_controls()
         self._update_source_rows()
 
@@ -733,8 +697,8 @@ class SettingsOverlay(QWidget):
             'capture_after_hotkey': self.cb_after.currentIndex() == 0,
             'hotkey':         hotkey,
             'audio_mode':     mode_map[self.cb_audio.currentIndex()],
-            'audio_source':   self.cb_game_src._combo.currentText(),
-            'mic_source':     self.cb_mic_src._combo.currentText(),
+            'audio_source':   self.cb_game_src.currentText(),
+            'mic_source':     self.cb_mic_src.currentText(),
             'output_format':  self.cb_format.currentText().lower(),
             'output_dir':     self.le_outdir.text(),
         })
