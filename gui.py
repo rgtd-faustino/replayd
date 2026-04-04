@@ -158,7 +158,7 @@ class ClipRow(QWidget):
         lay.addLayout(info, stretch=1)
 
         # Delete button
-        del_btn = QPushButton('🗑')
+        del_btn = QPushButton('✕')
         del_btn.setFixedSize(26, 26)
         del_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         del_btn.setToolTip('Delete clip')

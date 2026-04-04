@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 from PyQt6.QtWidgets import (
-    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel, QSpinBox,
+    QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
     QLineEdit, QComboBox, QPushButton, QFileDialog,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRect
@@ -26,6 +26,7 @@ BG    = '#13110f'
 S1    = '#1b1814'
 S2    = '#232019'
 S3    = '#2e2a23'
+S4    = '#3a352d'
 ACC   = '#da7b24'
 ACC_H = '#e68f38'
 TX    = '#ece7df'
@@ -215,6 +216,115 @@ class _KeyCapture(QWidget):
         p.setFont(font)
         p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, label)
         p.end()
+
+# ── custom spinbox (replaces QSpinBox — always shows visible +/− buttons) ─────
+
+class _SpinBox(QWidget):
+    """
+    Drop-in replacement for QSpinBox with always-visible, styled +/− buttons.
+    Exposes .value(), .setValue(), .setEnabled() so existing code needs no changes.
+    """
+
+    _BTN_CSS = f'''
+        QPushButton {{
+            background: {S3};
+            border: 1px solid rgba(255,255,255,0.08);
+            color: {TX};
+            font-size: 16px;
+            font-weight: 400;
+            min-width: 28px;
+            min-height: 32px;
+        }}
+        QPushButton:hover   {{ background: {S4}; color: {TX}; }}
+        QPushButton:pressed {{ background: #45403a; }}
+        QPushButton:disabled {{ color: {TX3}; background: {S2}; }}
+    '''
+
+    def __init__(self, lo: int, hi: int, parent=None):
+        super().__init__(parent)
+        self._lo  = lo
+        self._hi  = hi
+        self._val = lo
+
+        h = QHBoxLayout(self)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(0)
+
+        self._btn_minus = QPushButton('−')
+        self._btn_minus.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self._btn_minus.setFixedSize(28, 32)
+        self._btn_minus.setStyleSheet(
+            self._BTN_CSS +
+            'QPushButton { border-right: none; border-top-left-radius: 8px; border-bottom-left-radius: 8px; }'
+        )
+        self._btn_minus.setAutoRepeat(True)
+        self._btn_minus.setAutoRepeatDelay(450)
+        self._btn_minus.setAutoRepeatInterval(80)
+        self._btn_minus.clicked.connect(self._decrement)
+
+        self._lbl = QLabel(str(lo))
+        self._lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._lbl.setFixedSize(46, 32)
+        self._lbl.setStyleSheet(f'''
+            background: {S2};
+            border: 1px solid rgba(255,255,255,0.08);
+            border-left: none;
+            border-right: none;
+            color: {TX};
+            font-size: 13px;
+            font-weight: 700;
+        ''')
+
+        self._btn_plus = QPushButton('+')
+        self._btn_plus.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self._btn_plus.setFixedSize(28, 32)
+        self._btn_plus.setStyleSheet(
+            self._BTN_CSS +
+            'QPushButton { border-left: none; border-top-right-radius: 8px; border-bottom-right-radius: 8px; }'
+        )
+        self._btn_plus.setAutoRepeat(True)
+        self._btn_plus.setAutoRepeatDelay(450)
+        self._btn_plus.setAutoRepeatInterval(80)
+        self._btn_plus.clicked.connect(self._increment)
+
+        h.addWidget(self._btn_minus)
+        h.addWidget(self._lbl)
+        h.addWidget(self._btn_plus)
+
+    # ── public API (same as QSpinBox) ─────────────────────────────────────────
+
+    def value(self) -> int:
+        return self._val
+
+    def setValue(self, v: int):
+        self._val = max(self._lo, min(self._hi, int(v)))
+        self._lbl.setText(str(self._val))
+
+    def setEnabled(self, enabled: bool):
+        super().setEnabled(enabled)
+        self._btn_minus.setEnabled(enabled)
+        self._btn_plus.setEnabled(enabled)
+        fade = 'rgba(236,231,223,1.0)' if enabled else 'rgba(236,231,223,0.3)'
+        self._lbl.setStyleSheet(f'''
+            background: {S2};
+            border: 1px solid rgba(255,255,255,0.08);
+            border-left: none;
+            border-right: none;
+            color: {fade};
+            font-size: 13px;
+            font-weight: 700;
+        ''')
+
+    # ── internal ──────────────────────────────────────────────────────────────
+
+    def _increment(self):
+        self.setValue(self._val + 1)
+
+    def _decrement(self):
+        self.setValue(self._val - 1)
+
+
+# ── settings row ──────────────────────────────────────────────────────────────
 
 class SettingsRow(QWidget):
     """One settings row: label/sublabel on the left, control on the right."""
@@ -410,34 +520,19 @@ class SettingsOverlay(QWidget):
     # ── widget factories ──────────────────────────────────────────────────────
 
     @staticmethod
-    def _make_spinbox(lo: int, hi: int) -> QSpinBox:
-        sb = QSpinBox()
-        sb.setRange(lo, hi)
-        sb.setFixedWidth(70)
-        sb.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        return sb
+    def _make_spinbox(lo: int, hi: int) -> '_SpinBox':
+        return _SpinBox(lo, hi)
 
     @staticmethod
-    def _spinbox_with_unit(sb: QSpinBox, unit: str) -> QWidget:
+    def _spinbox_with_unit(sb: '_SpinBox', unit: str) -> QWidget:
         w = QWidget()
         w.setStyleSheet('background:transparent;border:none;')
         h = QHBoxLayout(w)
         h.setContentsMargins(0, 0, 0, 0)
         h.setSpacing(6)
-        sb.setStyleSheet(f'''
-            QSpinBox {{
-                background: {S2}; border: 1px solid rgba(255,255,255,0.08);
-                border-radius: 8px; color: {TX}; font-size: 14px; font-weight: 600;
-                padding: 4px 6px; text-align: center;
-            }}
-            QSpinBox::up-button, QSpinBox::down-button {{
-                background: {S3}; border: none; width: 16px;
-            }}
-            QSpinBox::up-button:hover, QSpinBox::down-button:hover {{ background: #3a352d; }}
-        ''')
+        h.addWidget(sb)
         unit_lbl = QLabel(unit)
         unit_lbl.setStyleSheet(f'color:{TX3}; font-size:12px; background:transparent; border:none;')
-        h.addWidget(sb)
         h.addWidget(unit_lbl)
         return w
 
@@ -529,7 +624,23 @@ class SettingsOverlay(QWidget):
                 padding: 5px 10px; min-width: {width}px;
             }}
             QComboBox:focus {{ border-color: {ACC}; }}
-            QComboBox::drop-down {{ border: none; width: 20px; }}
+            QComboBox::drop-down {{
+                subcontrol-origin: border;
+                subcontrol-position: top right;
+                width: 28px;
+                background: {S3};
+                border-left: 1px solid rgba(255,255,255,0.08);
+                border-top-right-radius: 8px;
+                border-bottom-right-radius: 8px;
+            }}
+            QComboBox::drop-down:hover {{ background: {S4}; }}
+            QComboBox::down-arrow {{
+                image: none;
+                width: 0px; height: 0px;
+                border-left:  4px solid transparent;
+                border-right: 4px solid transparent;
+                border-top:   5px solid {TX2};
+            }}
             QComboBox QAbstractItemView {{
                 background: {S2}; color: {TX};
                 border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
