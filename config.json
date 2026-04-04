@@ -8,6 +8,6 @@
   "segment_duration": 5,
   "audio_mode": "both",
   "audio_source": "auto",
-  "video_codec": "h264_soft",
+  "video_codec": "h264",
   "mic_source": "auto"
 }

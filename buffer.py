@@ -82,20 +82,26 @@ class BufferManager:
     # ── GStreamer pipeline ────────────────────────────────────────────────────
 
     CODEC_MAP = {
-        'h264':      ('vah264enc', 'h264parse'),
-        'h265':      ('vah265enc', 'h265parse'),
-        'av1':       ('vav1enc',   'av1parse'),
-        'h264_soft': ('x264enc',   'h264parse'),
+        'h264':       ('vah264enc',  'h264parse'),
+        'h265':       ('vah265enc',  'h265parse'),
+        'av1':        ('vav1enc',    'av1parse'),
+        'h264_soft':  ('x264enc',    'h264parse'),
+        'nvenc_h264': ('nvh264enc',  'h264parse'),
+        'nvenc_h265': ('nvh265enc',  'h265parse'),
+        'nvenc_av1':  ('nvav1enc',   'av1parse'),
     }
 
     @staticmethod
     def _probe_codecs() -> list[str]:
         """Return list of available codec keys based on installed GStreamer elements."""
         checks = {
-            'h264':      'vah264enc',
-            'h265':      'vah265enc',
-            'av1':       'vav1enc',
-            'h264_soft': 'x264enc',
+            'h264':       'vah264enc',
+            'h265':       'vah265enc',
+            'av1':        'vav1enc',
+            'h264_soft':  'x264enc',
+            'nvenc_h264': 'nvh264enc',
+            'nvenc_h265': 'nvh265enc',
+            'nvenc_av1':  'nvav1enc',
         }
         available = []
         for key, element in checks.items():

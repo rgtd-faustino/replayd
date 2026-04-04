@@ -369,8 +369,16 @@ class SettingsOverlay(QWidget):
     COMBO_AUDIO = ['Game + Mic', 'Game only', 'Mic only']
     COMBO_AFTER = ['Enabled', 'Disabled']
     FORMATS     = ['mp4', 'mkv']
-    COMBO_CODEC = ['H.264 (VA-API)', 'H.265 / HEVC (VA-API)', 'AV1 (VA-API)', 'H.264 (Software)']
-    CODEC_KEYS  = ['h264', 'h265', 'av1', 'h264_soft']
+    COMBO_CODEC = [
+        'H.264 (VA-API)',
+        'H.265 / HEVC (VA-API)',
+        'AV1 (VA-API)',
+        'H.264 (Software)',
+        'H.264 (NVENC — NVIDIA)',
+        'H.265 / HEVC (NVENC — NVIDIA)',
+        'AV1 (NVENC — NVIDIA)',
+    ]
+    CODEC_KEYS  = ['h264', 'h265', 'av1', 'h264_soft', 'nvenc_h264', 'nvenc_h265', 'nvenc_av1']
 
     def __init__(self, config: dict, parent=None):
         super().__init__(parent)
@@ -480,7 +488,7 @@ class SettingsOverlay(QWidget):
         # Video codec
         self.cb_codec = QComboBox()
         self.cb_codec.addItems(self.COMBO_CODEC)
-        self.cb_codec.setStyleSheet(self._select_css())
+        self.cb_codec.setStyleSheet(self._select_css(width=180))
         lay.addWidget(SettingsRow('Video codec', 'GPU encoder to use', self.cb_codec))
 
         # Output folder
