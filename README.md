@@ -6,6 +6,14 @@ Built specifically for [Bazzite](https://bazzite.gg/) but should work on any dis
 
 ---
 
+<div align="center">
+  <img src="assets/main-window.png" width="45%" />
+  &nbsp;&nbsp;&nbsp;
+  <img src="assets/settings.png" width="45%" />
+</div>
+
+---
+
 ## What it does
 
 - Records your screen continuously into a rolling buffer (no files pile up — it self-cleans).
@@ -104,8 +112,8 @@ The app writes short `.mkv` segments (default 5 seconds each) to `/tmp/replayd_b
 
 **Python packages** (installed by `install.sh` or `pip3 install -r requirements.txt`):
 - `dbus-next` — D-Bus / xdg-desktop-portal for Wayland screen capture
-- `evdev` — global hotkey via `/dev/input`
-- `PyQt6` — GUI (window + tray)
+- `evdev` — global hotkey listener via `/dev/input` (requires `input` group)
+- `PyQt6` — GUI: tray icon, main window, settings overlay
 - `qasync` — bridges asyncio with the Qt event loop
 
 **System packages** (installed by `install.sh`):
