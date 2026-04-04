@@ -27,8 +27,8 @@ Built specifically for [Bazzite](https://bazzite.gg/) but should work on any dis
 ## Requirements
 
 **Hardware**
-- A GPU with VA-API support (Intel, AMD, or recent NVIDIA via nouveau/NVK) for hardware-accelerated H.264 encoding.
-  If `vah264enc` fails on your machine, open `buffer.py` and replace `vah264enc` with `x264enc` (slower, software encoding).
+- A GPU with VA-API support (Intel, AMD, or recent NVIDIA via nouveau/NVK) for hardware-accelerated encoding.
+  If your GPU doesn't support VA-API, select **H.264 (Software)** in the settings — it uses the CPU instead and works on any machine.
 
 **System**
 - Wayland compositor (KDE Plasma, GNOME, etc.)
@@ -71,6 +71,7 @@ Edit `config.json` or use the ⚙️ settings button in the app window. All chan
 | `hotkey` | `KEY_F5` | evdev key name — see full list below |
 | `output_dir` | `~/Videos/Replayd` | Where clips are saved |
 | `output_format` | `mp4` | `mp4` or `mkv` |
+| `video_codec` | `h264` | `h264`, `h265`, `av1`, or `h264_soft` (software) — app auto-detects what your GPU supports |
 | `segment_duration` | `5` | Internal segment length in seconds (don't change unless you know why) |
 | `audio_mode` | `both` | `game` (desktop audio), `mic` (microphone), or `both` |
 | `audio_source` | `auto` | PulseAudio monitor device, or `auto` to detect |
@@ -103,8 +104,8 @@ The app writes short `.mkv` segments (default 5 seconds each) to `/tmp/replayd_b
 **Audio encoding fails (`fdkaacenc`)**
 → Your distro may not have the fdkaac GStreamer plugin (patent issues on some repos). The installer tries to install it and falls back gracefully to `gst-libav` AAC.
 
-**`vah264enc` not found / video encoding fails**
-→ Replace `vah264enc` with `x264enc` in `buffer.py` for software encoding. Also install `gstreamer1.0-plugins-ugly` / `gst-plugins-ugly`.
+**Video encoding fails / codec not found**
+→ Open settings and switch to **H.264 (Software)** — this works on any machine without VA-API. The app also auto-detects available codecs on startup and falls back automatically if the selected one isn't supported.
 
 ---
 
