@@ -34,7 +34,7 @@ The main interface and settings panel cover all core functionality.
 Trim and export clips without leaving the app.
 
 <div align="center">
-  <img src="assets/clip-editor-window.png" width="70%" />
+  <img src="assets/clip-editor-window.png" width="100%" />
 </div>
 
 - **Timeline trimming** — set exact in/out points  
