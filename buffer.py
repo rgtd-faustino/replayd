@@ -11,6 +11,8 @@ Audio modes (config['audio_mode']):
     'both' - both mixed via GStreamer audiomixer
 """
 
+from __future__ import annotations
+
 import asyncio
 import shlex
 import subprocess
@@ -148,18 +150,14 @@ class BufferManager:
                 f'fdkaacenc ! queue ! mux.audio_0'
             )
 
-        else:  # 'both' – mix game + mic
-            # audiomixer blends both sources into one stream
+        else:  # 'both' – game on audio_0, mic on audio_1 (separate tracks for post-mix)
             audio = (
-                f'audiomixer name=mix ! '
+                f'pulsesrc device={game_src} ! '
                 f'audioconvert ! audioresample ! {caps} ! '
                 f'fdkaacenc ! queue ! mux.audio_0 '
-                # game feed
-                f'pulsesrc device={game_src} ! '
-                f'audioconvert ! audioresample ! {caps} ! mix. '
-                # mic feed
                 f'pulsesrc device={mic_src} ! '
-                f'audioconvert ! audioresample ! {caps} ! mix.'
+                f'audioconvert ! audioresample ! {caps} ! '
+                f'fdkaacenc ! queue ! mux.audio_1'
             )
 
         return video + ' ' + audio
@@ -167,7 +165,24 @@ class BufferManager:
     # ── lifecycle ─────────────────────────────────────────────────────────────
 
     async def start(self):
-        available = self._probe_codecs()
+        loop      = asyncio.get_running_loop()
+
+        # ── PipeWire sanity check ─────────────────────────────────────────────
+        pw_check = await asyncio.create_subprocess_exec(
+            'pw-cli', 'info',
+            stdout=asyncio.subprocess.DEVNULL,
+            stderr=asyncio.subprocess.DEVNULL,
+        )
+        await pw_check.wait()
+        if pw_check.returncode != 0:
+            raise RuntimeError(
+                'PipeWire is not running or pw-cli is not installed.\n'
+                '  Start it with:  systemctl --user start pipewire pipewire-pulse\n'
+                '  Install it with your package manager (see install.sh).'
+            )
+
+        available = await loop.run_in_executor(None, self._probe_codecs)
+
         codec_key = self.cfg.get('video_codec', 'h264')
         if codec_key not in available:
             fallback = 'h264_soft' if 'h264_soft' in available else (available[0] if available else 'h264_soft')
@@ -255,21 +270,33 @@ class BufferManager:
 
     # ── clip query ────────────────────────────────────────────────────────────
 
-    def get_segments_for_clip(
-        self,
-        trigger_time: float,
-        seconds_before: float,
-        seconds_after: float,
-    ) -> list[Path]:
-        margin = self.seg_duration
-        start  = trigger_time - seconds_before - margin
-        end    = trigger_time + seconds_after   + margin
+    def get_segments_for_clip(self, trigger_time, seconds_before, seconds_after):
+        # Quantos segmentos cobrem cada janela
+        segs_before = ceil(seconds_before / self.seg_duration) + 1
+        segs_after  = ceil(seconds_after  / self.seg_duration) + 1
 
-        relevant = [
-            (path, t) for path, t in self.seg_log
-            if start <= t <= end and path.exists()
-        ]
-        return [path for path, _ in sorted(relevant, key=lambda x: x[1])]
+        # Todos os segmentos existentes, ordenados por nome (seg_00001, seg_00002, ...)
+        all_segs = sorted(
+            [path for path, _ in self.seg_log if path.exists()],
+            key=lambda p: p.name,
+        )
+
+        if not all_segs:
+            return []
+
+        # Estimar qual o segmento do trigger pelo timestamp de gravação
+        # e pela duração de cada segmento
+        started_at = self.recording_started_at or trigger_time
+        trigger_offset_secs = trigger_time - started_at
+        trigger_seg_idx = int(trigger_offset_secs / self.seg_duration)
+
+        # Clamp ao range real de segmentos disponíveis no buffer
+        trigger_seg_idx = min(trigger_seg_idx, len(all_segs) - 1)
+
+        first = max(0, trigger_seg_idx - segs_before)
+        last  = min(len(all_segs) - 1, trigger_seg_idx + segs_after)
+
+        return all_segs[first : last + 1]
 
     def stop(self):
         if self._gst_proc and self._gst_proc.returncode is None:

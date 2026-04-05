@@ -495,6 +495,24 @@ class SettingsOverlay(QWidget):
         dir_w = self._make_folder_row()
         lay.addWidget(SettingsRow('Output folder', '', dir_w))
 
+        # Recording source — single button, immediately saves + restarts into picker
+        self._change_src_btn = QPushButton('Change source…')
+        self._change_src_btn.setFixedHeight(34)
+        self._change_src_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        self._change_src_btn.setStyleSheet(f'''
+            QPushButton {{
+                background: {S2}; border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 9px; color: {TX2}; font-size: 12px; padding: 0 14px;
+            }}
+            QPushButton:hover {{ background: {S3}; color: {TX}; }}
+        ''')
+        self._change_src_btn.clicked.connect(self._on_change_source)
+        lay.addWidget(SettingsRow(
+            'Recording source',
+            'Click to pick a different screen or window',
+            self._change_src_btn,
+        ))
+
         lay.addSpacing(16)
 
         # Action buttons
@@ -652,6 +670,10 @@ class SettingsOverlay(QWidget):
         self._update_after_controls()
         self._update_source_rows()
 
+        # Show the currently selected capture source on the button.
+        current_src = self.config.get('current_source_label', 'Full screen')
+        self._change_src_btn.setText(current_src)
+
     def _update_after_controls(self):
         self.sb_after.setEnabled(self.cb_after.currentIndex() == 0)
 
@@ -703,6 +725,18 @@ class SettingsOverlay(QWidget):
         folder = QFileDialog.getExistingDirectory(self, 'Choose output folder', start)
         if folder:
             self.le_outdir.setText(folder)
+
+    def _on_change_source(self):
+        """Immediately save config with screen_source='custom' and restart.
+        The portal picker will appear on the next launch."""
+        self.config['screen_source'] = 'custom'
+        try:
+            CONFIG_PATH.write_text(json.dumps(self.config, indent=2))
+        except OSError as e:
+            print(f'[Settings] Error saving config for source change: {e}')
+            return
+        print('[Settings] Restarting to show screen/window picker…')
+        os.execv(sys.executable, [sys.executable] + sys.argv)
 
     def _on_save(self):
         hotkey = self.le_hotkey.text().strip()

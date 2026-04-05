@@ -49,6 +49,10 @@ class ClipSaver:
             print('[Clip] Already saving - ignoring trigger.')
             return
 
+        if not self.buf.seg_log:
+            print('[Clip] Buffer not ready yet (no segments) - ignoring trigger.')
+            return
+
         self._busy   = True
         trigger_time = time.time()
         sec_before   = self.cfg['seconds_before']
@@ -88,6 +92,7 @@ class ClipSaver:
                 '-f', 'concat',
                 '-safe', '0',
                 '-i', str(concat_file),
+                '-map', '0',        # include ALL streams (video + every audio track)
                 '-c', 'copy',
                 str(out_path),
             ]

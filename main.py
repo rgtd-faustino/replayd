@@ -6,8 +6,28 @@ Press the configured hotkey (or click the tray icon / Save Clip button) to save 
 
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
+
+# ── Python version check ──────────────────────────────────────────────────────
+if sys.version_info < (3, 10):
+    print(
+        f'[Error] Python 3.10 or newer is required '
+        f'(found {sys.version_info.major}.{sys.version_info.minor}).\n'
+        f'        Install a newer Python via your package manager or pyenv.'
+    )
+    sys.exit(1)
+
+# ── Wayland check ─────────────────────────────────────────────────────────────
+if not os.environ.get('WAYLAND_DISPLAY'):
+    print(
+        '[Error] Wayland not detected (WAYLAND_DISPLAY is not set).\n'
+        '        replayd requires a Wayland compositor.\n'
+        '        If you are running KDE or GNOME, make sure you selected\n'
+        '        the Wayland session at login, not X11.'
+    )
+    sys.exit(1)
 
 from PyQt6.QtWidgets import QApplication
 import qasync
@@ -41,7 +61,21 @@ async def main():
     # 1. Wayland portal → PipeWire node ID
     portal = WaylandPortal()
     await portal.setup()
-    node_id = await portal.get_node_id()
+    node_id = await portal.get_node_id(
+        screen_source=config.get('screen_source', 'desktop')
+    )
+
+    # If the user just picked a new source via "Change source", reset the flag
+    # so the picker doesn't appear on every subsequent launch.
+    if config.get('screen_source') == 'custom':
+        config['screen_source'] = 'desktop'
+        config['current_source_label'] = portal.source_label
+        try:
+            path = Path(__file__).parent / 'config.json'
+            path.write_text(json.dumps(config, indent=2))
+            print(f'[Config] Source locked in as: {portal.source_label}')
+        except OSError as e:
+            print(f'[Config] Warning: could not save updated source: {e}')
 
     # 2. Core components
     buffer = BufferManager(config, node_id)

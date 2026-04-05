@@ -8,10 +8,15 @@ KDE Plasma's portal introspection XML.
 
 import asyncio
 import time
+from pathlib import Path
 
 from dbus_next.aio import MessageBus
 from dbus_next.message import Message
 from dbus_next import BusType, Variant
+
+# Saved after the first portal session so subsequent launches with
+# screen_source='desktop' skip the picker completely.
+_TOKEN_PATH = Path(__file__).parent / '.portal_restore_token'
 
 
 class WaylandPortal:
@@ -23,6 +28,7 @@ class WaylandPortal:
         self.bus          = None
         self.session_path = None
         self._sender      = None   # e.g. "1_178"
+        self.source_label = 'Desktop'
 
     def _token(self, prefix: str) -> str:
         ts = str(int(time.time() * 1_000_000))[-8:]
@@ -105,7 +111,7 @@ class WaylandPortal:
 
     # ── main flow ────────────────────────────────────────────────────────────
 
-    async def get_node_id(self) -> int:
+    async def get_node_id(self, screen_source: str = 'desktop') -> int:
         if self.bus is None:
             await self.setup()
 
@@ -149,20 +155,37 @@ class WaylandPortal:
         wait2 = asyncio.create_task(self._wait_response(req2))
         await asyncio.sleep(0.1)
 
-        await self._call(
-            'SelectSources',
-            'oa{sv}',
-            [
-                self.session_path,
-                {
-                    'handle_token': Variant('s', t_req2),
-                    'types':        Variant('u', 1),      # MONITOR
-                    'multiple':     Variant('b', False),
-                    'cursor_mode':  Variant('u', 2),      # EMBEDDED
-                },
-            ],
-        )
+        select_opts: dict = {
+            'handle_token': Variant('s', t_req2),
+            'multiple':     Variant('b', False),
+            'cursor_mode':  Variant('u', 2),      # EMBEDDED
+        }
 
+        if screen_source == 'custom':
+            # Let user pick any monitor or window; always show picker
+            select_opts['types']        = Variant('u', 3)        # MONITOR | WINDOW
+            select_opts['persist_mode'] = Variant('u', 2)        # persist permanently
+            _TOKEN_PATH.unlink(missing_ok=True)                  # clear saved token
+            print('[Portal] Custom source mode — screen/window picker will appear.')
+        else:
+            # Desktop mode: monitor only + restore_token so picker only appears once
+            select_opts['types']        = Variant('u', 1)  # MONITOR only
+            select_opts['persist_mode'] = Variant('u', 2)  # persist permanently
+
+            restore_token: str | None = None
+            if _TOKEN_PATH.exists():
+                try:
+                    restore_token = _TOKEN_PATH.read_text().strip() or None
+                except OSError:
+                    restore_token = None
+
+            if restore_token:
+                select_opts['restore_token'] = Variant('s', restore_token)
+                print('[Portal] Desktop mode — restore token found, skipping picker.')
+            else:
+                print('[Portal] Desktop mode — first run, picker appears once to select your monitor.')
+
+        await self._call('SelectSources', 'oa{sv}', [self.session_path, select_opts])
         await wait2
         print('[Portal] Sources selected.')
 
@@ -188,6 +211,20 @@ class WaylandPortal:
 
         r3 = await wait3
 
+        # Persist restore_token for all modes — on the next launch this skips the picker.
+        raw_token = r3.get('restore_token')
+        if raw_token is not None:
+            token_str = raw_token.value if hasattr(raw_token, 'value') else str(raw_token)
+            if token_str:
+                try:
+                    _TOKEN_PATH.write_text(token_str)
+                    print('[Portal] Restore token saved — picker will be skipped on next launch.')
+                except OSError as exc:
+                    print(f'[Portal] Warning: could not save restore token: {exc}')
+        else:
+            print('[Portal] Note: portal did not return a restore_token '
+                  '(xdg-desktop-portal < 1.17 — picker will appear each launch).')
+
         streams = r3.get('streams')
         if not streams:
             raise RuntimeError('No streams in Start response.')
@@ -202,6 +239,25 @@ class WaylandPortal:
 
         node_id = int(first[0].value if hasattr(first[0], 'value') else first[0])
         print(f'[Portal] PipeWire node ID: {node_id}')
+
+        # Try to build a human-readable label for the selected source.
+        try:
+            props = first[1].value if hasattr(first[1], 'value') else first[1]
+            if isinstance(props, dict):
+                size_v = props.get('size')
+                type_v = props.get('source-type')
+                if size_v is not None:
+                    size   = size_v.value if hasattr(size_v, 'value') else size_v
+                    w, h   = int(size[0]), int(size[1])
+                    t_val  = (type_v.value if hasattr(type_v, 'value') else type_v) if type_v else 1
+                    kind   = 'Window' if t_val == 2 else 'Monitor'
+                    self.source_label = f'{kind} ({w}\u00d7{h})'
+                else:
+                    self.source_label = 'Desktop'
+        except Exception:
+            self.source_label = 'Desktop'
+        print(f'[Portal] Source label: {self.source_label}')
+
         return node_id
 
     async def close(self):

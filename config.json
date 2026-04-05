@@ -9,5 +9,7 @@
   "audio_mode": "both",
   "audio_source": "auto",
   "video_codec": "h264",
-  "mic_source": "auto"
+  "mic_source": "auto",
+  "screen_source": "desktop",
+  "current_source_label": "Monitor (1920\u00d71080)"
 }
