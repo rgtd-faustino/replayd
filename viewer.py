@@ -519,6 +519,7 @@ class ClipViewer(QWidget):
         self._sidebar_items: list[SidebarItem] = []
         self._audio_players: list[QMediaPlayer] = []
         self._audio_outputs: list[QAudioOutput] = []
+        self._base_audio_idx: int = 0
 
         self.setWindowTitle('replayd — Clip Viewer')
         self.setMinimumSize(960, 600); self.resize(1160, 740)
@@ -698,7 +699,7 @@ class ClipViewer(QWidget):
                     except Exception:
                         pass
                     try:
-                        player.setActiveAudioTrack(idx)
+                        player.setActiveAudioTrack(self._base_audio_idx + idx)
                     except Exception:
                         pass
                     try:
@@ -775,7 +776,18 @@ class ClipViewer(QWidget):
     # ── clip load ──────────────────────────────────────────────────────────────
 
     @staticmethod
-    def _probe_tracks(path: Path) -> int:
+    def _probe_track_layout(path: Path) -> tuple[int, int]:
+        """Return (n_mixer_tracks, base_audio_index) for *path*.
+
+        replayd clips saved with audio_mode='both' contain three audio streams:
+          a:0  amix(game+mic)  disposition=default  <- heard by all players
+          a:1  game only                            <- editable in viewer
+          a:2  mic  only                            <- editable in viewer
+
+        For that 3-stream layout we hide a:0 from the mixer and only expose
+        a:1 / a:2, so (2, 1) is returned.
+        For a normal 2-stream file: (2, 0).  Single-track: (1, 0).
+        """
         try:
             r = subprocess.run(
                 ['ffprobe', '-v', 'error', '-select_streams', 'a',
@@ -783,10 +795,15 @@ class ClipViewer(QWidget):
                 capture_output=True, text=True, timeout=8,
             )
             if r.returncode == 0:
-                return len([l for l in r.stdout.strip().splitlines() if l.strip()])
+                n = len([l for l in r.stdout.strip().splitlines() if l.strip()])
+                if n == 3:
+                    # replayd 'both' format: a:0 is pre-mixed default,
+                    # skip it and expose only the individual tracks a:1/a:2.
+                    return 2, 1
+                return n, 0
         except Exception:
             pass
-        return 1
+        return 1, 0
 
     def _load_clip(self, path: Path):
         self._current_path = path; self._set_active(path)
@@ -797,7 +814,7 @@ class ClipViewer(QWidget):
         self._in_ms = 0; self._out_ms = 1
         self._timeline.set_in(0.0); self._timeline.set_out(1.0); self._timeline.set_pos(0.0)
 
-        n_tracks = self._probe_tracks(path)
+        n_tracks, self._base_audio_idx = self._probe_track_layout(path)
         self._mixer.load_tracks(n_tracks)
         self._setup_audio_players(path, n_tracks)
 
@@ -897,10 +914,11 @@ class ClipViewer(QWidget):
             cmd += ['-ss', f'{self._in_ms/1000:.3f}', '-to', f'{self._out_ms/1000:.3f}']
         cmd += ['-i', str(src)]
 
+        base = getattr(self, '_base_audio_idx', 0)
         if n == 1:
-            fc = f'[0:a:0]volume={volumes[0]:.4f}[aout]'
+            fc = f'[0:a:{base}]volume={volumes[0]:.4f}[aout]'
         else:
-            parts  = [f'[0:a:{i}]volume={v:.4f}[a{i}]' for i, v in enumerate(volumes)]
+            parts  = [f'[0:a:{base + i}]volume={v:.4f}[a{i}]' for i, v in enumerate(volumes)]
             mix_in = ''.join(f'[a{i}]' for i in range(n))
             parts.append(f'{mix_in}amix=inputs={n}:normalize=0[aout]')
             fc = ';'.join(parts)

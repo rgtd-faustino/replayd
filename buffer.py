@@ -413,9 +413,42 @@ class BufferManager:
 
     # ── clip query ────────────────────────────────────────────────────────────
 
-    def get_segments_for_clip(self, trigger_time, seconds_before, seconds_after):
-        segs_before = ceil(seconds_before / self.seg_duration) + 1
-        segs_after  = ceil(seconds_after  / self.seg_duration) + 1
+    def get_segments_for_clip(
+        self,
+        trigger_time: float,
+        seconds_before: float,
+        seconds_after: float,
+    ) -> tuple[list[Path], float, float]:
+        """Return (segments, ffmpeg_ss, total_duration).
+
+        segments       – ordered list of .mkv files to concat
+        ffmpeg_ss      – seek offset (seconds) to pass as -ss to ffmpeg so the
+                         output clip starts exactly at trigger_time - seconds_before
+        total_duration – pass as -t to ffmpeg (= seconds_before + seconds_after)
+
+        How trigger detection works
+        ---------------------------
+        We use each segment's mtime (the time GStreamer finished writing it) to
+        find the first completed segment whose mtime is *after* trigger_time.
+        That segment was the one in-progress at the moment of the trigger.
+
+        The previous approach computed an index from
+        (trigger_time - recording_started_at) / seg_duration which broke in
+        practice because GStreamer takes a variable amount of time to initialise
+        its pipeline, so the offset never mapped cleanly to segment numbers and
+        trigger_seg_idx was always clamped to 0.
+
+        How precise trimming works
+        --------------------------
+        Even after finding the right segments, a segment-level window is off by
+        up to ±seg_duration seconds because triggers almost never fall exactly
+        on a segment boundary.  We calculate an exact seek offset (ss) into the
+        concatenated segments so ffmpeg starts output at trigger_time -
+        seconds_before and stops after exactly seconds_before + seconds_after.
+        """
+        # +2 extra segments on each side to give headroom for the trim.
+        segs_before = ceil(seconds_before / self.seg_duration) + 2
+        segs_after  = ceil(seconds_after  / self.seg_duration) + 2
 
         # Read segments directly from disk so we include any written since the
         # last _monitor_segments poll, and exclude tiny files that are still
@@ -430,41 +463,47 @@ class BufferManager:
         )
 
         if not all_segs:
-            return []
+            return [], 0.0, float(seconds_before + seconds_after)
 
-        # Determine which segment contains the trigger moment.
-        #
-        # Bug in previous approach: trigger_seg_idx was calculated from
-        # absolute recording time (trigger_time - started_at) and then used as
-        # a direct index into all_segs. After pruning, all_segs[0] is no longer
-        # segment #1 — it can be segment #104 — so the index was off by
-        # (first_seg_number - 1), causing almost no "after" segments to be
-        # returned.
-        #
-        # Fix: extract the absolute segment number from the first filename
-        # (e.g. "seg_00104.mkv" → 104), then map the trigger's absolute segment
-        # number to a valid index in all_segs.
-        def _seg_num(p: Path) -> int:
+        # ── 1. Find the trigger segment ───────────────────────────────────────
+        # The first segment whose mtime > trigger_time is the one that was being
+        # written when the hotkey was pressed.
+        trigger_seg_idx = len(all_segs) - 1   # fallback: treat trigger as end
+        for i, p in enumerate(all_segs):
             try:
-                return int(p.stem.replace('seg_', ''))
-            except ValueError:
-                return 0
+                if p.stat().st_mtime > trigger_time:
+                    trigger_seg_idx = i
+                    break
+            except OSError:
+                continue
 
-        first_seg_num = _seg_num(all_segs[0])   # e.g. 104
-        started_at    = self.recording_started_at or trigger_time
-        trigger_offset_secs = trigger_time - started_at
-        trigger_abs_seg     = int(trigger_offset_secs / self.seg_duration) + 1  # 1-based
-        # Convert absolute segment number to index in all_segs
-        trigger_seg_idx = trigger_abs_seg - first_seg_num
-        trigger_seg_idx = max(0, min(trigger_seg_idx, len(all_segs) - 1))
-
+        # ── 2. Select the segment window ─────────────────────────────────────
         first = max(0, trigger_seg_idx - segs_before)
         last  = min(len(all_segs) - 1, trigger_seg_idx + segs_after)
+        selected = all_segs[first : last + 1]
+
+        # ── 3. Calculate precise ffmpeg seek offset ───────────────────────────
+        # The mtime of the segment *before* the first selected one is the exact
+        # wall-clock time when the first selected segment started being written.
+        # Using the predecessor's mtime is more accurate than subtracting
+        # seg_duration from the first segment's own mtime.
+        try:
+            if first > 0:
+                first_seg_start = all_segs[first - 1].stat().st_mtime
+            else:
+                first_seg_start = all_segs[first].stat().st_mtime - self.seg_duration
+        except OSError:
+            first_seg_start = trigger_time - seconds_before
+
+        clip_start   = trigger_time - seconds_before
+        ss           = max(0.0, clip_start - first_seg_start)
+        total_dur    = float(seconds_before + seconds_after)
 
         print(f'[Buffer] Clip window: segs[{first}:{last+1}] '
               f'(trigger_idx={trigger_seg_idx}, '
-              f'total_available={len(all_segs)})')
-        return all_segs[first : last + 1]
+              f'total_available={len(all_segs)}, '
+              f'trim_ss={ss:.1f}s, duration={total_dur:.0f}s)')
+        return selected, ss, total_dur
 
     def stop(self):
         if self._gst_proc and self._gst_proc.returncode is None:

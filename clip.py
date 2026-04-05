@@ -67,7 +67,7 @@ class ClipSaver:
             # finishes writing the last segment before we touch it.
             await asyncio.sleep(sec_after + seg_dur)
 
-            segments = self.buf.get_segments_for_clip(
+            segments, ss, total_dur = self.buf.get_segments_for_clip(
                 trigger_time, sec_before, sec_after
             )
 
@@ -75,27 +75,76 @@ class ClipSaver:
                 print('[Clip] No segments found - nothing to save.')
                 return
 
-            print(f'[Clip] Stitching {len(segments)} segment(s)...')
+            print(f'[Clip] Stitching {len(segments)} segment(s) '
+                  f'(trim: ss={ss:.1f}s, duration={total_dur:.0f}s)...')
 
-            # Build ffmpeg concat list
+            # Build ffmpeg concat list.
+            # Use `inpoint` on the first segment instead of an output-side
+            # `-ss`.  Output-side `-ss` with `-c copy` and multiple audio
+            # streams is a known ffmpeg pitfall: it uses the video / primary
+            # audio stream as the seek reference and can silently discard
+            # packets from secondary streams (mic, audio_1).  `inpoint` is
+            # applied by the concat demuxer before packets reach the muxer,
+            # so the seek covers every stream simultaneously.
             concat_file = self.buf.seg_dir / '_concat.txt'
-            concat_file.write_text(
-                '\n'.join(f"file '{seg.absolute()}'" for seg in segments)
-            )
+            lines: list[str] = []
+            for i, seg in enumerate(segments):
+                lines.append(f"file '{seg.absolute()}'")
+                if i == 0 and ss > 0.001:
+                    lines.append(f'inpoint {ss:.3f}')
+            concat_file.write_text('\n'.join(lines))
 
             # Output filename
             ts       = datetime.now().strftime('%Y%m%d_%H%M%S')
             out_path = self.out / f'clip_{ts}.{self.fmt}'
 
-            cmd = [
-                'ffmpeg', '-y',
-                '-f', 'concat',
-                '-safe', '0',
-                '-i', str(concat_file),
-                '-map', '0',        # include ALL streams (video + every audio track)
-                '-c', 'copy',
-                str(out_path),
-            ]
+            audio_mode = self.cfg.get('audio_mode', 'game')
+
+            if audio_mode == 'both':
+                # Goal: raw clip plays game+mic in any media player, AND the
+                # replayd viewer can still offer per-track volume control.
+                #
+                # Layout written to the output file:
+                #   a:0  amix(game+mic)  disposition=default   ← what all
+                #                                               players hear
+                #   a:1  game only       disposition=none      ← viewer track
+                #   a:2  mic  only       disposition=none      ← viewer track
+                #
+                # The viewer detects the 3-audio-stream layout and exposes
+                # only a:1 / a:2 as mixer controls (see viewer.py).
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', str(concat_file),
+                    '-t', f'{total_dur:.3f}',
+                    '-filter_complex',
+                    '[0:a:0][0:a:1]amix=inputs=2:normalize=0[mixed]',
+                    '-map', '0:v',
+                    '-map', '[mixed]',    # a:0 = pre-mix  (default)
+                    '-map', '0:a:0',      # a:1 = game     (non-default)
+                    '-map', '0:a:1',      # a:2 = mic      (non-default)
+                    '-c:v', 'copy',
+                    '-c:a:0', 'aac', '-b:a:0', '192k',
+                    '-c:a:1', 'copy',
+                    '-c:a:2', 'copy',
+                    '-disposition:a:0', 'default',
+                    '-disposition:a:1', '0',
+                    '-disposition:a:2', '0',
+                    str(out_path),
+                ]
+            else:
+                # Single audio stream: stream-copy everything as-is.
+                cmd = [
+                    'ffmpeg', '-y',
+                    '-f', 'concat',
+                    '-safe', '0',
+                    '-i', str(concat_file),
+                    '-t',  f'{total_dur:.3f}',
+                    '-map', '0',
+                    '-c', 'copy',
+                    str(out_path),
+                ]
 
             result = subprocess.run(cmd, capture_output=True, text=True)
             if result.returncode == 0:
