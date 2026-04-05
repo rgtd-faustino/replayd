@@ -6,11 +6,41 @@ Built specifically for [Bazzite](https://bazzite.gg/) but should work on any dis
 
 ---
 
+## Interface Overview
+
+### Main Window & Settings
+
+The main interface and settings panel cover all core functionality.
+
+<table align="center">
+  <tr>
+    <td align="center">
+      <img src="assets/main-window.png" width="450"/><br/>
+      <b>Main Window</b><br/>
+      Live buffer status, quick controls, and instant replay capture (F5).
+    </td>
+    <td align="center">
+      <img src="assets/settings.png" width="450"/><br/>
+      <b>Settings Panel</b><br/>
+      Configure buffer, hotkey, audio sources, codec, and output options.
+    </td>
+  </tr>
+</table>
+
+---
+
+### Clip Editor
+
+Trim and export clips without leaving the app.
+
 <div align="center">
-  <img src="assets/main-window.png" width="45%" />
-  &nbsp;&nbsp;&nbsp;
-  <img src="assets/settings.png" width="45%" />
+  <img src="assets/clip-editor.png" width="70%" />
 </div>
+
+- **Timeline trimming** — set exact in/out points  
+- **Preview player** — review clips before exporting  
+- **Audio mixer** — control game and mic tracks independently  
+- **Export** — saves a new processed clip without overwriting the original  
 
 ---
 
