@@ -8,12 +8,15 @@ ffmpeg is only used later by clip.py to concatenate segments.
 Audio modes (config['audio_mode']):
     'game' - default sink monitor (desktop/game audio)
     'mic'  - input device (microphone)
-    'both' - both mixed via GStreamer audiomixer
+    'both' - game on audio_0 via pulsesrc, mic on audio_1 via pulsesrc
+             (both with provide-clock=false so video pipewiresrc remains
+              the master clock for stable muxing)
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 import shlex
 import subprocess
 import time
@@ -39,6 +42,20 @@ class BufferManager:
         self.recording_started_at: float | None = None
 
     # ── audio detection ───────────────────────────────────────────────────────
+
+    @staticmethod
+    def _is_valid_mic_source_name(name: str) -> bool:
+        """Return True if source name looks like a real mic (not monitor/virtual mix)."""
+        n = (name or '').strip().lower()
+        if not n:
+            return False
+        if 'monitor' in n:
+            return False
+        # Avoid virtual mixed/processed nodes that frequently include game audio.
+        blocked = ('echo-cancel', 'echo_cancel', 'remap', 'loopback', 'combine')
+        if any(tok in n for tok in blocked):
+            return False
+        return True
 
     def _find_audio_source(self) -> str:
         """Auto-detect the desktop/game monitor source."""
@@ -66,20 +83,130 @@ class BufferManager:
         return 'default.monitor'
 
     def _find_mic_source(self) -> str:
-        """Auto-detect the first microphone (non-monitor) source."""
+        """Auto-detect the default microphone (non-monitor) source.
+
+        On PipeWire, pactl get-default-source is unreliable — it can return a
+        monitor of the default sink or an echo-cancel virtual node that mixes
+        desktop + mic audio, causing the mic track to contain game audio too.
+
+        Detection order (most to least reliable):
+          1. System default source (if valid).
+          2. First valid alsa_input.* entry.
+          3. Any valid non-monitor source.
+        """
         try:
+            # 1) Prefer user/system default source.
+            try:
+                rd = subprocess.run(
+                    ['pactl', 'get-default-source'],
+                    capture_output=True, text=True, timeout=5,
+                )
+                if rd.returncode == 0:
+                    raw = rd.stdout.strip()
+                    if self._is_valid_mic_source_name(raw):
+                        return raw
+            except Exception:
+                pass
+
             r = subprocess.run(
                 ['pactl', 'list', 'short', 'sources'],
                 capture_output=True, text=True, timeout=5,
             )
-            for line in r.stdout.splitlines():
+            lines = r.stdout.splitlines()
+            sources: list[str] = []
+
+            for line in lines:
                 parts = line.split()
-                if len(parts) >= 2 and 'monitor' not in parts[1].lower():
-                    return parts[1]
+                if len(parts) >= 2:
+                    name = parts[1]
+                    if self._is_valid_mic_source_name(name):
+                        sources.append(name)
+
+            # 2) Prefer real hardware ALSA input sources.
+            for name in sources:
+                if name.startswith('alsa_input'):
+                    return name
+
+            # 3) Last resort: any valid source.
+            if sources:
+                return sources[0]
         except Exception:
             pass
         print('[Buffer] Warning: could not detect the microphone, using default')
         return 'default'
+
+    @staticmethod
+    def _pulse_src(device: str | None) -> str:
+        """Build pulsesrc with optional explicit device.
+
+        If device is None, Pulse/PipeWire chooses the current default source.
+        """
+        if device:
+            return f'pulsesrc device={device} do-timestamp=true provide-clock=false'
+        return 'pulsesrc do-timestamp=true provide-clock=false'
+
+    def _find_pw_mic_node_id(self, preferred_source: str | None = None) -> int | None:
+        """
+        Find the PipeWire node ID for microphone capture via pw-dump.
+
+        This is the preferred method for mic capture in 'both' mode.
+        pipewiresrc path=<id> shares the PipeWire clock with the video
+        pipewiresrc, eliminating the clock-mismatch that causes splitmuxsink
+        to silently drop the mic track.
+
+        Looks for Audio/Source nodes that are NOT monitors.
+        Prefers alsa_input.* nodes (real hardware) over virtual nodes.
+        If preferred_source is provided, tries to match that source first.
+        Returns None if pw-dump is unavailable or no mic node found.
+        """
+        try:
+            r = subprocess.run(
+                ['pw-dump'],
+                capture_output=True, text=True, timeout=10,
+            )
+            if r.returncode != 0:
+                return None
+
+            objects = json.loads(r.stdout)
+            pref = (preferred_source or '').strip().lower()
+            candidates: list[tuple[int, int, str]] = []   # (priority, id, name)
+
+            for obj in objects:
+                if obj.get('type') != 'PipeWire:Interface:Node':
+                    continue
+                info = obj.get('info', {})
+                props = info.get('props', {})
+                if props.get('media.class') != 'Audio/Source':
+                    continue
+                node_name = props.get('node.name', '')
+                if 'monitor' in node_name.lower():
+                    continue
+
+                node_l = node_name.lower()
+
+                # Highest priority: explicit source chosen by user/auto resolution.
+                if pref and node_l == pref:
+                    priority = -2
+                elif pref and pref in node_l:
+                    priority = -1
+                # Otherwise prefer real hardware ALSA input nodes.
+                elif node_name.startswith('alsa_input'):
+                    priority = 0
+                else:
+                    priority = 1
+
+                candidates.append((priority, obj.get('id'), node_name))
+
+            if candidates:
+                candidates.sort()
+                _, node_id, node_name = candidates[0]
+                print(f'[Buffer] PipeWire mic node: id={node_id}, name={node_name}')
+                return node_id
+
+        except Exception as e:
+            print(f'[Buffer] pw-dump mic detection failed: {e}')
+
+        return None
 
     # ── GStreamer pipeline ────────────────────────────────────────────────────
 
@@ -115,7 +242,7 @@ class BufferManager:
                 available.append(key)
         return available
 
-    def _build_pipeline(self, game_src: str, mic_src: str, audio_mode: str) -> str:
+    def _build_pipeline(self, game_src: str, mic_src: str | None, audio_mode: str) -> str:
         seg_pattern = str(self.seg_dir / 'seg_%05d.mkv')
         dur_ns      = self.seg_duration * 1_000_000_000
         caps        = 'audio/x-raw,rate=48000,channels=2'
@@ -138,27 +265,39 @@ class BufferManager:
 
         if audio_mode == 'game':
             audio = (
-                f'pulsesrc device={game_src} ! '
+                f'{self._pulse_src(game_src)} ! '
                 f'audioconvert ! audioresample ! {caps} ! '
                 f'fdkaacenc ! queue ! mux.audio_0'
             )
 
         elif audio_mode == 'mic':
             audio = (
-                f'pulsesrc device={mic_src} ! '
+                f'{self._pulse_src(mic_src)} ! '
                 f'audioconvert ! audioresample ! {caps} ! '
                 f'fdkaacenc ! queue ! mux.audio_0'
             )
 
-        else:  # 'both' – game on audio_0, mic on audio_1 (separate tracks for post-mix)
-            audio = (
-                f'pulsesrc device={game_src} ! '
+        else:  # 'both'
+            # Keep pulsesrc branches slaved to the PipeWire video clock.
+            game_audio = (
+                f'{self._pulse_src(game_src)} ! '
                 f'audioconvert ! audioresample ! {caps} ! '
-                f'fdkaacenc ! queue ! mux.audio_0 '
-                f'pulsesrc device={mic_src} ! '
-                f'audioconvert ! audioresample ! {caps} ! '
-                f'fdkaacenc ! queue ! mux.audio_1'
+                f'fdkaacenc ! queue max-size-time=3000000000 leaky=downstream ! mux.audio_0'
             )
+
+            # In practice, pipewiresrc audio can be unstable on some stacks
+            # (caps/runtime issues). Prefer pulsesrc for reliability.
+            mic_audio = (
+                f'{self._pulse_src(mic_src)} ! '
+                f'audioconvert ! audioresample ! {caps} ! '
+                f'fdkaacenc ! queue max-size-time=3000000000 leaky=downstream ! mux.audio_1'
+            )
+            if mic_src:
+                print(f'[Buffer] Mic audio: pulsesrc (device {mic_src})')
+            else:
+                print('[Buffer] Mic audio: pulsesrc (default source)')
+
+            audio = game_audio + ' ' + mic_audio
 
         return video + ' ' + audio
 
@@ -197,9 +336,13 @@ class BufferManager:
         if game_src == 'auto':
             game_src = self._find_audio_source()
 
-        mic_src = self.cfg.get('mic_source', 'auto')
-        if mic_src == 'auto':
-            mic_src = self._find_mic_source()
+        mic_cfg = self.cfg.get('mic_source', 'auto')
+        if mic_cfg == 'auto':
+            mic_src: str | None = None
+            mic_log = f'auto (default: {self._find_mic_source()})'
+        else:
+            mic_src = mic_cfg
+            mic_log = mic_src
 
         mode_label = {
             'game': 'Game/Desktop',
@@ -211,7 +354,7 @@ class BufferManager:
         if audio_mode in ('game', 'both'):
             print(f'[Buffer] Game source   : {game_src}')
         if audio_mode in ('mic', 'both'):
-            print(f'[Buffer] Microphone    : {mic_src}')
+            print(f'[Buffer] Microphone    : {mic_log}')
 
         pipeline = self._build_pipeline(game_src, mic_src, audio_mode)
         print(f'[Buffer] GStreamer pipeline:\n  {pipeline}\n')
@@ -271,31 +414,56 @@ class BufferManager:
     # ── clip query ────────────────────────────────────────────────────────────
 
     def get_segments_for_clip(self, trigger_time, seconds_before, seconds_after):
-        # Quantos segmentos cobrem cada janela
         segs_before = ceil(seconds_before / self.seg_duration) + 1
         segs_after  = ceil(seconds_after  / self.seg_duration) + 1
 
-        # Todos os segmentos existentes, ordenados por nome (seg_00001, seg_00002, ...)
+        # Read segments directly from disk so we include any written since the
+        # last _monitor_segments poll, and exclude tiny files that are still
+        # being written by GStreamer (< 16 KB = almost certainly still open).
+        MIN_BYTES = 16_384
         all_segs = sorted(
-            [path for path, _ in self.seg_log if path.exists()],
+            [
+                p for p in self.seg_dir.glob('seg_*.mkv')
+                if p.exists() and p.stat().st_size >= MIN_BYTES
+            ],
             key=lambda p: p.name,
         )
 
         if not all_segs:
             return []
 
-        # Estimar qual o segmento do trigger pelo timestamp de gravação
-        # e pela duração de cada segmento
-        started_at = self.recording_started_at or trigger_time
-        trigger_offset_secs = trigger_time - started_at
-        trigger_seg_idx = int(trigger_offset_secs / self.seg_duration)
+        # Determine which segment contains the trigger moment.
+        #
+        # Bug in previous approach: trigger_seg_idx was calculated from
+        # absolute recording time (trigger_time - started_at) and then used as
+        # a direct index into all_segs. After pruning, all_segs[0] is no longer
+        # segment #1 — it can be segment #104 — so the index was off by
+        # (first_seg_number - 1), causing almost no "after" segments to be
+        # returned.
+        #
+        # Fix: extract the absolute segment number from the first filename
+        # (e.g. "seg_00104.mkv" → 104), then map the trigger's absolute segment
+        # number to a valid index in all_segs.
+        def _seg_num(p: Path) -> int:
+            try:
+                return int(p.stem.replace('seg_', ''))
+            except ValueError:
+                return 0
 
-        # Clamp ao range real de segmentos disponíveis no buffer
-        trigger_seg_idx = min(trigger_seg_idx, len(all_segs) - 1)
+        first_seg_num = _seg_num(all_segs[0])   # e.g. 104
+        started_at    = self.recording_started_at or trigger_time
+        trigger_offset_secs = trigger_time - started_at
+        trigger_abs_seg     = int(trigger_offset_secs / self.seg_duration) + 1  # 1-based
+        # Convert absolute segment number to index in all_segs
+        trigger_seg_idx = trigger_abs_seg - first_seg_num
+        trigger_seg_idx = max(0, min(trigger_seg_idx, len(all_segs) - 1))
 
         first = max(0, trigger_seg_idx - segs_before)
         last  = min(len(all_segs) - 1, trigger_seg_idx + segs_after)
 
+        print(f'[Buffer] Clip window: segs[{first}:{last+1}] '
+              f'(trigger_idx={trigger_seg_idx}, '
+              f'total_available={len(all_segs)})')
         return all_segs[first : last + 1]
 
     def stop(self):

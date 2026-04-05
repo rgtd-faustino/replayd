@@ -18,7 +18,8 @@ Audio notes
   Clips recorded with audio_mode='both' contain two separate audio streams:
     stream 0 = Game / Desktop audio
     stream 1 = Microphone
-  The mixer lets the user blend them freely before exporting.
+    The viewer plays all audio tracks at the same time.
+    Mixer sliders/mute update playback in real time and also affect export.
   Single-track clips show one "Audio" strip.
 """
 
@@ -50,6 +51,7 @@ TX    = '#ece7df'
 TX2   = '#8a8078'
 TX3   = '#4e4840'
 RED   = '#e45a5a'
+
 
 # ── thumbnails ─────────────────────────────────────────────────────────────────
 THUMB_DIR = Path('/tmp/replayd_thumbs')
@@ -278,6 +280,7 @@ class ClickSlider(QSlider):
 
 class AudioTrackStrip(QWidget):
     """Single row: icon · label · volume slider (0–200%) · pct · mute btn."""
+    changed = pyqtSignal()
 
     def __init__(self, label: str, icon: str, index: int, parent=None):
         super().__init__(parent)
@@ -316,11 +319,18 @@ class AudioTrackStrip(QWidget):
 
     def _on_val(self, v: int):
         self._pct.setText(f'{v}%')
-        col = TX3 if v == 0 else ACC
+        if v == 0:
+            col = TX3
+        elif v > 100:
+            col = ACC_H   # brighter amber to signal boost mode
+        else:
+            col = ACC
         self._pct.setStyleSheet(f'color:{col};font-size:11px;font-family:monospace;background:transparent;')
+        self.changed.emit()
 
     def _on_mute(self, checked: bool):
         self._muted = checked; self._slider.setEnabled(not checked); self._sync_mute()
+        self.changed.emit()
 
     def _sync_mute(self):
         if self._muted:
@@ -376,6 +386,7 @@ class AudioMixerPanel(QWidget):
     """
     HANDLE_H = 10; HEADER_H = 36; FOOTER_H = 46; TRACK_H = 44; PAD = 8
     SNAP_H   = HANDLE_H + HEADER_H   # 46
+    mix_changed = pyqtSignal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -394,7 +405,7 @@ class AudioMixerPanel(QWidget):
         t = QLabel('AUDIO MIXER')
         t.setStyleSheet(f'color:{TX3};font-size:10px;font-weight:600;letter-spacing:1.8px;background:transparent;')
         hl.addWidget(t); hl.addStretch()
-        hint = QLabel('sliders affect export only')
+        hint = QLabel('sliders affect exported file · track 0 controls preview volume')
         hint.setStyleSheet(f'color:{TX3};font-size:9px;background:transparent;')
         hl.addWidget(hint); hl.addSpacing(10)
         self._tog = QPushButton('▲'); self._tog.setFixedSize(24,24)
@@ -415,9 +426,19 @@ class AudioMixerPanel(QWidget):
         rb = QPushButton('Reset all'); rb.setFixedHeight(32)
         rb.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         rb.setStyleSheet(_btn_css(small=True)); rb.clicked.connect(self._reset)
-        fl.addWidget(rb); root.addWidget(self._foot)
+        fl.addWidget(rb)
+        # boost hint — visible only when any track is above 100 %
+        self._boost_hint = QLabel('⬆ volume boost · audible after export')
+        self._boost_hint.setStyleSheet(
+            f'color:{ACC_H};font-size:9px;font-weight:600;background:transparent;'
+        )
+        self._boost_hint.setVisible(False)
+        fl.addWidget(self._boost_hint)
+        fl.addStretch()
+        root.addWidget(self._foot)
 
         self.setStyleSheet(f'background:{S1};')
+        self.mix_changed.connect(self._update_boost_hint)
         self._calc_h()
 
     # ── public ─────────────────────────────────────────────────────────────────
@@ -433,8 +454,11 @@ class AudioMixerPanel(QWidget):
 
         DEFS = {1: [('Audio','🔊')], 2: [('Game Audio','🎮'),('Microphone','🎤')]}
         defs = DEFS.get(n, [(f'Track {i+1}','🎵') for i in range(n)])
-        for i,(lbl,ico) in enumerate(defs):
-            s = AudioTrackStrip(lbl, ico, i, self); self._tracks.append(s); self._blay.addWidget(s)
+        for i, (lbl, ico) in enumerate(defs):
+            s = AudioTrackStrip(lbl, ico, i, self)
+            s.changed.connect(self.mix_changed)
+            self._tracks.append(s)
+            self._blay.addWidget(s)
 
         if not self._expanded:
             self._expanded = True; self._body.setVisible(True)
@@ -443,6 +467,13 @@ class AudioMixerPanel(QWidget):
 
     def get_volumes(self) -> list[float]:
         return [t.volume for t in self._tracks]
+
+    def _update_boost_hint(self):
+        boosted = any(
+            t._slider.value() > 100 and not t._muted
+            for t in self._tracks
+        )
+        self._boost_hint.setVisible(boosted)
 
     def resize_to(self, h: int):
         if h <= self.SNAP_H + 20:
@@ -464,8 +495,13 @@ class AudioMixerPanel(QWidget):
         self._tog.setText('▲' if self._expanded else '▼'); self._calc_h()
 
     def _calc_h(self):
-        if not self._expanded: self.setFixedHeight(self.SNAP_H); return
-        self.setFixedHeight(self.HANDLE_H + self.HEADER_H + max(self._n,1)*self.TRACK_H + self.PAD*2 + self.FOOTER_H)
+        if not self._expanded:
+            self.setFixedHeight(self.SNAP_H)
+            return
+        self.setFixedHeight(
+            self.HANDLE_H + self.HEADER_H +
+            max(self._n, 1) * self.TRACK_H + self.PAD * 2 + self.FOOTER_H
+        )
 
     def _reset(self):
         for t in self._tracks: t.reset()
@@ -481,6 +517,8 @@ class ClipViewer(QWidget):
         self._current_path: Optional[Path] = None
         self._duration_ms = 1; self._in_ms = 0; self._out_ms = 1
         self._sidebar_items: list[SidebarItem] = []
+        self._audio_players: list[QMediaPlayer] = []
+        self._audio_outputs: list[QAudioOutput] = []
 
         self.setWindowTitle('replayd — Clip Viewer')
         self.setMinimumSize(960, 600); self.resize(1160, 740)
@@ -542,6 +580,9 @@ class ClipViewer(QWidget):
         self._sink   = QVideoSink()
         self._player = QMediaPlayer()
         self._audio  = QAudioOutput()
+        # Main player drives video/timeline only; mixed playback comes from
+        # per-track audio players created in _setup_audio_players.
+        self._audio.setMuted(True); self._audio.setVolume(0.0)
         self._player.setAudioOutput(self._audio)
         self._player.setVideoOutput(self._sink)
         self._sink.videoFrameChanged.connect(self._on_frame)
@@ -601,9 +642,91 @@ class ClipViewer(QWidget):
         # audio mixer (hidden until a clip with audio tracks is loaded)
         self._mixer = AudioMixerPanel()
         self._mixer.setVisible(False)
+        # mix_changed drives both: the boost hint (inside the panel) and live
+        # per-track playback volume/mute.
+        self._mixer.mix_changed.connect(self._on_mix_changed)
         lay.addWidget(self._mixer)
 
         return panel
+
+    # ── mixer → live preview sync ──────────────────────────────────────────────
+
+    def _on_mix_changed(self):
+        """Apply mixer values to all playback audio tracks in real time."""
+        if not self._audio_outputs:
+            return
+        volumes = self._mixer.get_volumes()
+        for i, out in enumerate(self._audio_outputs):
+            v = volumes[i] if i < len(volumes) else 1.0
+            out.setMuted(v <= 0.0001)
+            # QAudioOutput is capped at 1.0; >100% remains export-only boost.
+            out.setVolume(min(1.0, max(0.0, v)))
+
+    def _clear_audio_players(self):
+        for p in self._audio_players:
+            try:
+                p.stop()
+            except Exception:
+                pass
+            p.deleteLater()
+        for out in self._audio_outputs:
+            out.deleteLater()
+        self._audio_players.clear(); self._audio_outputs.clear()
+
+    def _setup_audio_players(self, path: Path, n_tracks: int):
+        self._clear_audio_players()
+        if n_tracks <= 0:
+            return
+
+        src = QUrl.fromLocalFile(str(path))
+        for i in range(n_tracks):
+            p = QMediaPlayer(self)
+            out = QAudioOutput(self)
+            out.setMuted(False); out.setVolume(1.0)
+            p.setAudioOutput(out)
+            p.setSource(src)
+
+            # Each player decodes one audio stream only.
+            def _bind_tracks(status, player=p, idx=i):
+                if status == QMediaPlayer.MediaStatus.LoadedMedia:
+                    try:
+                        player.setActiveVideoTrack(-1)
+                    except Exception:
+                        pass
+                    try:
+                        player.setActiveSubtitleTrack(-1)
+                    except Exception:
+                        pass
+                    try:
+                        player.setActiveAudioTrack(idx)
+                    except Exception:
+                        pass
+                    try:
+                        player.mediaStatusChanged.disconnect(_bind_tracks)
+                    except Exception:
+                        pass
+
+            p.mediaStatusChanged.connect(_bind_tracks)
+            self._audio_players.append(p)
+            self._audio_outputs.append(out)
+
+        self._on_mix_changed()
+
+    def _audio_set_position(self, ms: int):
+        for p in self._audio_players:
+            p.setPosition(ms)
+
+    def _audio_play(self):
+        for p in self._audio_players:
+            p.play()
+
+    def _audio_pause(self):
+        for p in self._audio_players:
+            p.pause()
+
+    def _audio_stop(self):
+        for p in self._audio_players:
+            p.stop()
 
     # ── folder ─────────────────────────────────────────────────────────────────
 
@@ -632,7 +755,7 @@ class ClipViewer(QWidget):
             e.setStyleSheet(f'color:{TX3};font-size:11px;padding:16px 0;')
             self._list_lay.insertWidget(0, e)
             if self._current_path is not None and not self._current_path.exists():
-                self._player.stop(); self._current_path = None
+                self._player.stop(); self._audio_stop(); self._clear_audio_players(); self._current_path = None
                 self._title_lbl.setText('No clip selected'); self._meta_lbl.setText('')
                 self._mixer.setVisible(False)
             return
@@ -667,14 +790,16 @@ class ClipViewer(QWidget):
 
     def _load_clip(self, path: Path):
         self._current_path = path; self._set_active(path)
-        self._player.stop(); self._player.setSource(QUrl.fromLocalFile(str(path)))
+        self._player.stop(); self._audio_stop(); self._player.setSource(QUrl.fromLocalFile(str(path)))
         self._title_lbl.setText(path.name)
         try:    self._meta_lbl.setText(f'  ·  {path.stat().st_size/1_048_576:.0f} MB')
         except: self._meta_lbl.setText('')
         self._in_ms = 0; self._out_ms = 1
         self._timeline.set_in(0.0); self._timeline.set_out(1.0); self._timeline.set_pos(0.0)
 
-        self._mixer.load_tracks(self._probe_tracks(path))
+        n_tracks = self._probe_tracks(path)
+        self._mixer.load_tracks(n_tracks)
+        self._setup_audio_players(path, n_tracks)
 
         try:    self._player.mediaStatusChanged.disconnect(self._on_prime)
         except: pass
@@ -685,6 +810,8 @@ class ClipViewer(QWidget):
             try: self._player.mediaStatusChanged.disconnect(self._on_prime)
             except: pass
             self._player.play()
+            self._audio_set_position(self._player.position())
+            self._audio_play()
 
     def _on_frame(self, frame: QVideoFrame):
         if not frame.isValid(): return
@@ -700,7 +827,8 @@ class ClipViewer(QWidget):
         if self._duration_ms > 0: self._timeline.set_pos(ms / self._duration_ms)
         self._update_lbl(ms)
         if ms >= self._out_ms and self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self._player.pause(); self._player.setPosition(self._out_ms)
+            self._player.pause(); self._audio_pause()
+            self._player.setPosition(self._out_ms); self._audio_set_position(self._out_ms)
 
     def _on_state(self, state):
         self._play_btn.setText('⏸  Pause' if state == QMediaPlayer.PlaybackState.PlayingState else '▶  Play')
@@ -713,15 +841,22 @@ class ClipViewer(QWidget):
 
     def _on_in_changed(self, r):  self._in_ms  = int(r * self._duration_ms); self._update_lbl()
     def _on_out_changed(self, r): self._out_ms = int(r * self._duration_ms); self._update_lbl()
-    def _on_seek(self, r):        self._player.setPosition(int(r * self._duration_ms))
+    def _on_seek(self, r):
+        ms = int(r * self._duration_ms)
+        self._player.setPosition(ms)
+        self._audio_set_position(ms)
 
     def _toggle_play(self):
         if not self._current_path: return
         if self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState:
-            self._player.pause()
+            self._player.pause(); self._audio_pause()
         else:
-            if self._player.position() >= self._out_ms - 100: self._player.setPosition(self._in_ms)
-            self._player.play()
+            if self._player.position() >= self._out_ms - 100:
+                self._player.setPosition(self._in_ms)
+                self._audio_set_position(self._in_ms)
+            else:
+                self._audio_set_position(self._player.position())
+            self._player.play(); self._audio_play()
 
     # ── trim ───────────────────────────────────────────────────────────────────
 
@@ -792,7 +927,7 @@ class ClipViewer(QWidget):
         if QMessageBox.question(self, 'Delete clip?', f'Permanently delete {self._current_path.name}?',
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel
         ) != QMessageBox.StandardButton.Yes: return
-        self._player.stop(); get_thumb_path(self._current_path).unlink(missing_ok=True)
+        self._player.stop(); self._audio_stop(); get_thumb_path(self._current_path).unlink(missing_ok=True)
         try: self._current_path.unlink(missing_ok=True)
         except OSError as e: QMessageBox.critical(self, 'Error', str(e)); return
         self._current_path = None; self._refresh_list()
@@ -811,7 +946,7 @@ class ClipViewer(QWidget):
             self._load_clip(self._sidebar_items[0].path)
 
     def closeEvent(self, e):
-        self._player.pause(); self.hide(); e.ignore()
+        self._player.pause(); self._audio_pause(); self.hide(); e.ignore()
 
     @staticmethod
     def _btn_css(accent=False, danger=False) -> str:
