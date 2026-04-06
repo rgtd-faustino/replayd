@@ -6,18 +6,21 @@ Built on Bazzite, works on anything running Wayland + PipeWire.
 
 ---
 
-<table align="center">
-  <tr>
-    <td align="center">
-      <img src="assets/main-window.png" width="420"/><br/>
-      <sub>Main window</sub>
-    </td>
-    <td align="center">
-      <img src="assets/settings.png" width="420"/><br/>
-      <sub>Settings</sub>
-    </td>
-  </tr>
-</table>
+<div align="center">
+  <img src="assets/main-window.png" width="400"/>
+  <br/><sub>Main window</sub>
+</div>
+
+---
+
+
+<div align="center">
+  <img src="assets/settings.png" width="860"/>
+  <br/><sub>Settings</sub>
+</div>
+
+---
+
 
 <div align="center">
   <img src="assets/clip-editor-window.png" width="860"/>
