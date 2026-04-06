@@ -502,8 +502,12 @@ class SettingsOverlay(QWidget):
         self.cb_after.currentIndexChanged.connect(self._update_after_controls)
         capture_lay.addWidget(SettingsRow('After hotkey capture', 'Record extra time after trigger', self.cb_after))
 
-        self.le_hotkey = _KeyCapture()
-        capture_lay.addWidget(SettingsRow('Hotkey', 'Click to rebind', self.le_hotkey))
+        hotkey_w = self._make_hotkey_row()
+        capture_lay.addWidget(SettingsRow(
+            'Hotkey',
+            'Managed by KDE · click to open Global Shortcuts',
+            hotkey_w,
+        ))
 
         video_cell = QFrame()
         video_cell.setStyleSheet(f'''
@@ -744,7 +748,6 @@ class SettingsOverlay(QWidget):
         self.sb_before.setValue(self.config.get('seconds_before', 30))
         self.sb_after.setValue(self.config.get('seconds_after', 10))
         self.cb_after.setCurrentIndex(0 if self.config.get('capture_after_hotkey', True) else 1)
-        self.le_hotkey.setText(self.config.get('hotkey', 'KEY_F9'))
         self.le_outdir.setText(self.config.get('output_dir', '~/Videos/Replayd'))
 
         mode = self.config.get('audio_mode', 'both')
@@ -827,6 +830,53 @@ class SettingsOverlay(QWidget):
         if folder:
             self.le_outdir.setText(folder)
 
+    def _make_hotkey_row(self) -> QWidget:
+        """
+        Opens KDE Global Shortcuts so the user can bind/change the key.
+        The binding is owned entirely by KDE — there is no key stored in
+        config.json for this.
+        """
+        btn = QPushButton('Open KDE Shortcuts…')
+        btn.setFixedHeight(32)
+        btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
+        btn.setStyleSheet(f'''
+            QPushButton {{
+                background: {S2};
+                border: 1px solid rgba(255,255,255,0.08);
+                border-radius: 8px;
+                color: {TX2};
+                font-size: 12px;
+                padding: 0 14px;
+            }}
+            QPushButton:hover  {{ background: {S3}; color: {TX}; }}
+            QPushButton:pressed {{ background: #1e1b16; }}
+        ''')
+        btn.clicked.connect(self._open_kde_shortcuts)
+        return btn
+
+    @staticmethod
+    def _open_kde_shortcuts():
+        """Open the KDE Global Shortcuts editor for the replayd component."""
+        import shutil
+        # kcmshell6 is the KDE 6 (Plasma 6) settings module launcher.
+        # Passing the component name focuses the view on the replayd shortcuts.
+        if shutil.which('kcmshell6'):
+            subprocess.Popen(
+                ['kcmshell6', 'keys', '--args', 'io.github.rgtd-faustino.replayd'],
+                start_new_session=True,
+            )
+        elif shutil.which('kcmshell5'):
+            subprocess.Popen(
+                ['kcmshell5', 'keys'],
+                start_new_session=True,
+            )
+        else:
+            # Fallback: open System Settings at the shortcuts page
+            subprocess.Popen(
+                ['systemsettings', 'kcm_keys'],
+                start_new_session=True,
+            )
+
     def _on_change_source(self):
         """Immediately save config with screen_source='custom' and restart.
         The portal picker will appear on the next launch."""
@@ -840,16 +890,11 @@ class SettingsOverlay(QWidget):
         os.execv(sys.executable, [sys.executable] + sys.argv)
 
     def _on_save(self):
-        hotkey = self.le_hotkey.text().strip()
-        if not hotkey.upper().startswith('KEY_'):
-            hotkey = 'KEY_' + hotkey.upper()
-
         mode_map = {0: 'both', 1: 'game', 2: 'mic'}
         self.config.update({
             'seconds_before': self.sb_before.value(),
             'seconds_after':  self.sb_after.value(),
             'capture_after_hotkey': self.cb_after.currentIndex() == 0,
-            'hotkey':         hotkey,
             'audio_mode':     mode_map[self.cb_audio.currentIndex()],
             'audio_source':   self.cb_game_src.currentText(),
             'mic_source':     self.cb_mic_src.currentText(),

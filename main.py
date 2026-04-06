@@ -64,7 +64,7 @@ async def main():
     print('╠══════════════════════════════════╣')
     print(f'║  Before : {config["seconds_before"]:>3}s                    ║')
     print(f'║  After  : {config["seconds_after"]:>3}s                    ║')
-    print(f'║  Hotkey : {config["hotkey"]:<22}  ║')
+    print(f'║  Hint   : {config["hotkey"]:<22}  ║')
     print(f'║  Output : {str(Path(config["output_dir"]).expanduser())[:21]:<21}  ║')
     print('╚══════════════════════════════════╝')
     print()
@@ -110,7 +110,7 @@ async def main():
 
     clip.on_saved = on_clip_saved
 
-    print(f'[Ready] Press {config["hotkey"]} or click the window button to save a clip.\n')
+    print(f'[Ready] Press your KDE-bound hotkey or click the window button to save a clip.\n')
     tray.mark_ready()
 
     buffer_task   = asyncio.create_task(buffer.start())   # records segments forever

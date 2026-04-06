@@ -2,7 +2,6 @@
   "seconds_before": 30,
   "seconds_after": 30,
   "capture_after_hotkey": true,
-  "hotkey": "KEY_F5",
   "output_dir": "~/Videos/Replayd",
   "output_format": "mp4",
   "segment_duration": 5,

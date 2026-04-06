@@ -534,8 +534,11 @@ class ReplaydWindow(QWidget):
         self._save_btn.clicked.connect(self._trigger_save)
         lay.addWidget(self._save_btn)
 
-        hotkey_key = self.cfg.get('hotkey', 'KEY_F9').replace('KEY_', '')
-        hint = QLabel(f'or press  <b>{hotkey_key}</b>  anywhere')
+        # The actual key binding is owned by KDE System Settings (Global Shortcuts).
+        # config['hotkey'] is only a preferred-trigger *hint* sent to the portal
+        # on first registration — it is not the live bound key.  Show a generic
+        # label instead of a stale / wrong key name.
+        hint = QLabel('or use your  <b>KDE global shortcut</b>')
         hint.setAlignment(Qt.AlignmentFlag.AlignCenter)
         hint.setTextFormat(Qt.TextFormat.RichText)
         hint.setStyleSheet(f'color:{TX3};font-size:11px;margin-bottom:8px;background:transparent;')

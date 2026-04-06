@@ -32,39 +32,12 @@ from dbus_next import BusType, Variant
 
 _SHORTCUT_ID = 'save-clip'
 
-_EVDEV_TO_TRIGGER: dict[str, str] = {
-    'PAGEUP':    'PgUp',     'PAGEDOWN':   'PgDown',
-    'HOME':      'Home',     'END':        'End',
-    'INSERT':    'Ins',      'DELETE':     'Del',
-    'BACKSPACE': 'Backspace','ENTER':      'Return',
-    'ESCAPE':    'Escape',   'TAB':        'Tab',
-    'SPACE':     'Space',    'PRINT':      'Print',
-    'SCROLLLOCK':'ScrollLock','PAUSE':     'Pause',
-    'NUMLOCK':   'NumLock',
-    'LEFTCTRL':  'Ctrl',     'RIGHTCTRL':  'Ctrl',
-    'LEFTSHIFT': 'Shift',    'RIGHTSHIFT': 'Shift',
-    'LEFTALT':   'Alt',      'RIGHTALT':   'Alt',
-    'LEFTMETA':  'Meta',     'RIGHTMETA':  'Meta',
-}
-
-
-def _evdev_to_trigger(key_name: str) -> str:
-    """Convert 'KEY_F5' -> 'F5', 'KEY_HOME' -> 'Home', etc."""
-    name = key_name.upper()
-    if name.startswith('KEY_'):
-        name = name[4:]
-    if name in _EVDEV_TO_TRIGGER:
-        return _EVDEV_TO_TRIGGER[name]
-    return name
-
-
 class HotkeyListener:
     BUS_NAME    = 'org.freedesktop.portal.Desktop'
     OBJECT_PATH = '/org/freedesktop/portal/desktop'
     GS_IFACE    = 'org.freedesktop.portal.GlobalShortcuts'
 
     def __init__(self, config: dict):
-        self.key_name = config.get('hotkey', 'KEY_F9')
         self.callback: Optional[Callable[[], Coroutine]] = None
         self._bus:          Optional[MessageBus] = None
         self._session_path: Optional[str]        = None
@@ -172,7 +145,6 @@ class HotkeyListener:
         print(f'[Hotkey] Session: {self._session_path}')
 
         # 2. BindShortcuts
-        preferred = _evdev_to_trigger(self.key_name)
         t_req2    = self._token('req')
         req2      = self._request_path(t_req2)
 
@@ -191,8 +163,7 @@ class HotkeyListener:
                     [
                         _SHORTCUT_ID,
                         {
-                            'description':       Variant('s', 'Save instant replay clip'),
-                            'preferred-trigger': Variant('s', preferred),
+                            'description': Variant('s', 'Save instant replay clip'),
                         },
                     ]
                 ],
@@ -204,11 +175,17 @@ class HotkeyListener:
             raise RuntimeError(f'BindShortcuts: {reply2.body}')
 
         await wait2
-        print(f'[Hotkey] Shortcut "{_SHORTCUT_ID}" registered '
-              f'(preferred trigger: {preferred}). '
-              'The compositor may prompt the user to bind a key on first run.')
+        print(f'[Hotkey] Shortcut "{_SHORTCUT_ID}" registered. '
+              'Set the key in KDE System Settings → Shortcuts → Global Shortcuts.')
 
-        # 3. Subscribe to Activated signals on the session
+        # 3. Subscribe to Activated signals.
+        #
+        # Per the xdg-desktop-portal GlobalShortcuts spec the Activated signal
+        # is emitted on the PORTAL object (/org/freedesktop/portal/desktop),
+        # NOT on the session object path.  The session handle is passed as the
+        # first body argument so we can filter for our own session.
+        # Subscribing to the session path is the original bug — the handler
+        # never fired because the path never matched.
         await self._bus.call(Message(
             destination = 'org.freedesktop.DBus',
             path        = '/org/freedesktop/DBus',
@@ -218,7 +195,7 @@ class HotkeyListener:
             body        = [
                 f"type='signal',"
                 f"sender='{self.BUS_NAME}',"
-                f"path='{self._session_path}',"
+                f"path='{self.OBJECT_PATH}',"      # ← portal object, not session
                 f"interface='{self.GS_IFACE}',"
                 f"member='Activated'"
             ],
@@ -227,12 +204,21 @@ class HotkeyListener:
         def _on_signal(msg):
             if (
                 msg.message_type.name == 'SIGNAL'
-                and msg.path      == self._session_path
+                and msg.path      == self.OBJECT_PATH  # ← portal object path
                 and msg.interface == self.GS_IFACE
                 and msg.member    == 'Activated'
             ):
                 # body: (session_handle, shortcut_id, timestamp, options)
-                shortcut_id = msg.body[1] if len(msg.body) > 1 else ''
+                # Filter by our session so we don't react to other apps' shortcuts.
+                raw_session = msg.body[0] if len(msg.body) > 0 else ''
+                session_handle = (
+                    raw_session.value if hasattr(raw_session, 'value') else str(raw_session)
+                )
+                if session_handle != self._session_path:
+                    return
+
+                raw_id      = msg.body[1] if len(msg.body) > 1 else ''
+                shortcut_id = raw_id.value if hasattr(raw_id, 'value') else str(raw_id)
                 if shortcut_id == _SHORTCUT_ID:
                     print(f'[Hotkey] "{_SHORTCUT_ID}" activated!')
                     if self.callback is not None:
