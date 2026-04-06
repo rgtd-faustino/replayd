@@ -1,0 +1,98 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.rgtd-faustino.replayd</id>
+
+  <name>replayd</name>
+  <summary>Instant replay buffer for Wayland</summary>
+
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>GPL-3.0-or-later</project_license>
+
+  <description>
+    <p>
+      replayd runs a continuous recording buffer in the background and saves a
+      clip on demand — similar to NVIDIA ShadowPlay or AMD ReLive, but for any
+      Wayland compositor on Linux.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Configurable rolling buffer (seconds before and after trigger)</li>
+      <li>Global shortcut via the XDG GlobalShortcuts portal</li>
+      <li>Hardware-accelerated encoding: VA-API, NVENC, or software x264</li>
+      <li>Separate game and microphone audio tracks with per-track mixer</li>
+      <li>Clip viewer with trim and audio mix controls</li>
+      <li>Output resolution and bitrate controls to manage file size</li>
+    </ul>
+  </description>
+
+  <launchable type="desktop-id">io.github.rgtd-faustino.replayd.desktop</launchable>
+
+  <url type="homepage">https://github.com/rgtd-faustino/replayd</url>
+  <url type="bugtracker">https://github.com/rgtd-faustino/replayd/issues</url>
+
+  <developer id="io.github.rgtd-faustino">
+    <name>rgtd-faustino</name>
+  </developer>
+
+  <provides>
+    <binary>replayd</binary>
+  </provides>
+
+  <requires>
+    <display_length compare="ge">768</display_length>
+    <internet>offline-only</internet>
+  </requires>
+
+  <recommends>
+    <control>keyboard</control>
+    <control>pointing</control>
+  </recommends>
+
+  <categories>
+    <category>AudioVideo</category>
+    <category>Video</category>
+    <category>Recorder</category>
+  </categories>
+
+  <keywords>
+    <keyword>replay</keyword>
+    <keyword>recording</keyword>
+    <keyword>capture</keyword>
+    <keyword>wayland</keyword>
+    <keyword>gaming</keyword>
+    <keyword>clip</keyword>
+    <keyword>buffer</keyword>
+    <keyword>shadowplay</keyword>
+  </keywords>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main window showing buffer state and recent clips</caption>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/screenshots/main.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Clip viewer with trim timeline and audio mixer</caption>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/screenshots/viewer.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Settings panel</caption>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/screenshots/settings.png</image>
+    </screenshot>
+  </screenshots>
+
+  <releases>
+    <release version="1.0.0" date="2026-04-06">
+      <description>
+        <p>Initial Flathub release.</p>
+        <ul>
+          <li>Ported hotkey system from evdev to XDG GlobalShortcuts portal</li>
+          <li>Full Flatpak sandbox compatibility</li>
+          <li>Resolution and bitrate controls for clip size management</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+
+  <content_rating type="oars-1.1" />
+
+</component>

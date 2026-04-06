@@ -11,5 +11,7 @@
   "video_codec": "h264",
   "mic_source": "auto",
   "screen_source": "desktop",
-  "current_source_label": "Monitor (1920\u00d71080)"
+  "current_source_label": "Monitor (1920\u00d71080)",
+  "recording_resolution": "native",
+  "video_bitrate_kbps": 0
 }

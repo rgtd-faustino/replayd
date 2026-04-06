@@ -16,7 +16,6 @@ Audio modes (config['audio_mode']):
 from __future__ import annotations
 
 import asyncio
-import json
 import shlex
 import subprocess
 import time
@@ -24,14 +23,15 @@ from collections import deque
 from math import ceil
 from pathlib import Path
 
+from paths import buffer_dir as _buffer_dir
+
 
 class BufferManager:
     def __init__(self, config: dict, node_id: int):
         self.cfg          = config
         self.node_id      = node_id
         self.seg_duration = config.get('segment_duration', 5)
-        self.seg_dir      = Path('/tmp/replayd_buffer')
-        self.seg_dir.mkdir(parents=True, exist_ok=True)
+        self.seg_dir      = _buffer_dir()
 
         max_secs      = config['seconds_before'] + config['seconds_after'] + 30
         self.max_segs = ceil(max_secs / self.seg_duration) + 2
@@ -58,80 +58,50 @@ class BufferManager:
         return True
 
     def _find_audio_source(self) -> str:
-        """Auto-detect the desktop/game monitor source."""
+        """Auto-detect the desktop/game monitor source via PipeWire/PulseAudio."""
         try:
-            r = subprocess.run(
-                ['pactl', 'get-default-sink'],
-                capture_output=True, text=True, timeout=5,
-            )
-            if r.returncode == 0 and r.stdout.strip():
-                return r.stdout.strip() + '.monitor'
+            import pulsectl
+            with pulsectl.Pulse('replayd-audio') as pulse:
+                default_sink = pulse.server_info().default_sink_name
+                if default_sink:
+                    return default_sink + '.monitor'
         except Exception:
             pass
         try:
-            r = subprocess.run(
-                ['pactl', 'list', 'short', 'sources'],
-                capture_output=True, text=True, timeout=5,
-            )
-            for line in r.stdout.splitlines():
-                parts = line.split()
-                if len(parts) >= 2 and 'monitor' in parts[1].lower():
-                    return parts[1]
+            import pulsectl
+            with pulsectl.Pulse('replayd-audio-fb') as pulse:
+                for src in pulse.source_list():
+                    if 'monitor' in src.name.lower():
+                        return src.name
         except Exception:
             pass
         print('[Buffer] Warning: could not detect the audio monitor, using default.monitor')
         return 'default.monitor'
 
     def _find_mic_source(self) -> str:
-        """Auto-detect the default microphone (non-monitor) source.
-
-        On PipeWire, pactl get-default-source is unreliable — it can return a
-        monitor of the default sink or an echo-cancel virtual node that mixes
-        desktop + mic audio, causing the mic track to contain game audio too.
-
-        Detection order (most to least reliable):
-          1. System default source (if valid).
-          2. First valid alsa_input.* entry.
-          3. Any valid non-monitor source.
-        """
+        """Auto-detect the default microphone (non-monitor) source via pulsectl."""
         try:
-            # 1) Prefer user/system default source.
-            try:
-                rd = subprocess.run(
-                    ['pactl', 'get-default-source'],
-                    capture_output=True, text=True, timeout=5,
-                )
-                if rd.returncode == 0:
-                    raw = rd.stdout.strip()
-                    if self._is_valid_mic_source_name(raw):
-                        return raw
-            except Exception:
-                pass
+            import pulsectl
+            with pulsectl.Pulse('replayd-mic') as pulse:
+                # Try the system default source first
+                default_src = pulse.server_info().default_source_name
+                if default_src and self._is_valid_mic_source_name(default_src):
+                    return default_src
 
-            r = subprocess.run(
-                ['pactl', 'list', 'short', 'sources'],
-                capture_output=True, text=True, timeout=5,
-            )
-            lines = r.stdout.splitlines()
-            sources: list[str] = []
+                sources = pulse.source_list()
+                valid = [s.name for s in sources
+                         if self._is_valid_mic_source_name(s.name)]
 
-            for line in lines:
-                parts = line.split()
-                if len(parts) >= 2:
-                    name = parts[1]
-                    if self._is_valid_mic_source_name(name):
-                        sources.append(name)
+                # Prefer real hardware ALSA input nodes
+                for name in valid:
+                    if name.startswith('alsa_input'):
+                        return name
 
-            # 2) Prefer real hardware ALSA input sources.
-            for name in sources:
-                if name.startswith('alsa_input'):
-                    return name
+                if valid:
+                    return valid[0]
+        except Exception as e:
+            print(f'[Buffer] pulsectl error in _find_mic_source: {e}')
 
-            # 3) Last resort: any valid source.
-            if sources:
-                return sources[0]
-        except Exception:
-            pass
         print('[Buffer] Warning: could not detect the microphone, using default')
         return 'default'
 
@@ -145,68 +115,6 @@ class BufferManager:
             return f'pulsesrc device={device} do-timestamp=true provide-clock=false'
         return 'pulsesrc do-timestamp=true provide-clock=false'
 
-    def _find_pw_mic_node_id(self, preferred_source: str | None = None) -> int | None:
-        """
-        Find the PipeWire node ID for microphone capture via pw-dump.
-
-        This is the preferred method for mic capture in 'both' mode.
-        pipewiresrc path=<id> shares the PipeWire clock with the video
-        pipewiresrc, eliminating the clock-mismatch that causes splitmuxsink
-        to silently drop the mic track.
-
-        Looks for Audio/Source nodes that are NOT monitors.
-        Prefers alsa_input.* nodes (real hardware) over virtual nodes.
-        If preferred_source is provided, tries to match that source first.
-        Returns None if pw-dump is unavailable or no mic node found.
-        """
-        try:
-            r = subprocess.run(
-                ['pw-dump'],
-                capture_output=True, text=True, timeout=10,
-            )
-            if r.returncode != 0:
-                return None
-
-            objects = json.loads(r.stdout)
-            pref = (preferred_source or '').strip().lower()
-            candidates: list[tuple[int, int, str]] = []   # (priority, id, name)
-
-            for obj in objects:
-                if obj.get('type') != 'PipeWire:Interface:Node':
-                    continue
-                info = obj.get('info', {})
-                props = info.get('props', {})
-                if props.get('media.class') != 'Audio/Source':
-                    continue
-                node_name = props.get('node.name', '')
-                if 'monitor' in node_name.lower():
-                    continue
-
-                node_l = node_name.lower()
-
-                # Highest priority: explicit source chosen by user/auto resolution.
-                if pref and node_l == pref:
-                    priority = -2
-                elif pref and pref in node_l:
-                    priority = -1
-                # Otherwise prefer real hardware ALSA input nodes.
-                elif node_name.startswith('alsa_input'):
-                    priority = 0
-                else:
-                    priority = 1
-
-                candidates.append((priority, obj.get('id'), node_name))
-
-            if candidates:
-                candidates.sort()
-                _, node_id, node_name = candidates[0]
-                print(f'[Buffer] PipeWire mic node: id={node_id}, name={node_name}')
-                return node_id
-
-        except Exception as e:
-            print(f'[Buffer] pw-dump mic detection failed: {e}')
-
-        return None
 
     # ── GStreamer pipeline ────────────────────────────────────────────────────
 
@@ -250,10 +158,43 @@ class BufferManager:
         codec_key        = self.cfg.get('video_codec', 'h264')
         encoder, parser  = self.CODEC_MAP.get(codec_key, ('vah264enc', 'h264parse'))
 
+        # ── Resolution scaling ────────────────────────────────────────────────
+        res = self.cfg.get('recording_resolution', 'native')
+        scale_str = ''
+        if res and res != 'native':
+            try:
+                w_str, h_str = res.lower().split('x')
+                w, h = int(w_str), int(h_str)
+                scale_str = (
+                    f'videoscale ! '
+                    f'video/x-raw,width={w},height={h},pixel-aspect-ratio=1/1 ! '
+                    f'videoconvert ! '
+                )
+                print(f'[Buffer] Resolution override: {w}\u00d7{h}')
+            except (ValueError, AttributeError):
+                print(f'[Buffer] Warning: invalid recording_resolution "{res}", using native.')
+
+        # ── Bitrate / rate-control ────────────────────────────────────────────
+        # video_bitrate_kbps = 0 leaves the encoder at its own default.
+        # Any positive value injects a bitrate cap; useful to rein in VA-API /
+        # NVENC encoders whose defaults can be 10-20 Mbps at 1080p.
+        bitrate_kbps = max(0, int(self.cfg.get('video_bitrate_kbps', 0)))
+        if bitrate_kbps > 0:
+            if encoder.startswith('va'):
+                # VA-API: explicit CBR mode + bitrate (kbps)
+                enc_str = f'{encoder} rate-control=cbr bitrate={bitrate_kbps}'
+            else:
+                # x264enc and NVENC: both accept `bitrate` in kbps directly
+                enc_str = f'{encoder} bitrate={bitrate_kbps}'
+            print(f'[Buffer] Video bitrate cap: {bitrate_kbps} kbps')
+        else:
+            enc_str = encoder
+
         video = (
             f'pipewiresrc path={self.node_id} do-timestamp=true ! '
             f'videoconvert ! '
-            f'{encoder} ! '
+            f'{scale_str}'
+            f'{enc_str} ! '
             f'{parser} ! '
             f'queue ! '
             f'splitmuxsink name=mux '
@@ -267,14 +208,14 @@ class BufferManager:
             audio = (
                 f'{self._pulse_src(game_src)} ! '
                 f'audioconvert ! audioresample ! {caps} ! '
-                f'fdkaacenc ! queue ! mux.audio_0'
+                f'avenc_aac bitrate=192000 ! queue ! mux.audio_0'
             )
 
         elif audio_mode == 'mic':
             audio = (
                 f'{self._pulse_src(mic_src)} ! '
                 f'audioconvert ! audioresample ! {caps} ! '
-                f'fdkaacenc ! queue ! mux.audio_0'
+                f'avenc_aac bitrate=192000 ! queue ! mux.audio_0'
             )
 
         else:  # 'both'
@@ -282,7 +223,7 @@ class BufferManager:
             game_audio = (
                 f'{self._pulse_src(game_src)} ! '
                 f'audioconvert ! audioresample ! {caps} ! '
-                f'fdkaacenc ! queue max-size-time=3000000000 leaky=downstream ! mux.audio_0'
+                f'avenc_aac bitrate=192000 ! queue max-size-time=3000000000 leaky=downstream ! mux.audio_0'
             )
 
             # In practice, pipewiresrc audio can be unstable on some stacks
@@ -290,7 +231,7 @@ class BufferManager:
             mic_audio = (
                 f'{self._pulse_src(mic_src)} ! '
                 f'audioconvert ! audioresample ! {caps} ! '
-                f'fdkaacenc ! queue max-size-time=3000000000 leaky=downstream ! mux.audio_1'
+                f'avenc_aac bitrate=192000 ! queue max-size-time=3000000000 leaky=downstream ! mux.audio_1'
             )
             if mic_src:
                 print(f'[Buffer] Mic audio: pulsesrc (device {mic_src})')
@@ -306,19 +247,20 @@ class BufferManager:
     async def start(self):
         loop      = asyncio.get_running_loop()
 
-        # ── PipeWire sanity check ─────────────────────────────────────────────
-        pw_check = await asyncio.create_subprocess_exec(
-            'pw-cli', 'info',
-            stdout=asyncio.subprocess.DEVNULL,
-            stderr=asyncio.subprocess.DEVNULL,
-        )
-        await pw_check.wait()
-        if pw_check.returncode != 0:
+        # ── PipeWire / PulseAudio sanity check ──────────────────────────────────
+        def _check_pipewire():
+            import pulsectl
+            with pulsectl.Pulse('replayd-check') as pulse:
+                pulse.server_info()
+
+        try:
+            await loop.run_in_executor(None, _check_pipewire)
+            print('[Buffer] PipeWire/PulseAudio connection OK')
+        except Exception as _e:
             raise RuntimeError(
-                'PipeWire is not running or pw-cli is not installed.\n'
-                '  Start it with:  systemctl --user start pipewire pipewire-pulse\n'
-                '  Install it with your package manager (see install.sh).'
-            )
+                f'PipeWire is not running or pulsectl cannot connect: {_e}\n'
+                '  Start it with: systemctl --user start pipewire pipewire-pulse'
+            ) from _e
 
         available = await loop.run_in_executor(None, self._probe_codecs)
 

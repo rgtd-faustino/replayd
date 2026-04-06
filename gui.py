@@ -16,7 +16,7 @@ from typing import Optional
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QPushButton, QFrame, QSystemTrayIcon, QMenu, QSizePolicy,
+    QPushButton, QFrame, QSizePolicy,
 )
 from PyQt6.QtGui import (
     QIcon, QPixmap, QPainter, QColor, QBrush, QPen, QFont, QCursor, QDesktopServices,
@@ -44,8 +44,7 @@ CARD_W = 416
 
 # ── thumbnail helpers ─────────────────────────────────────────────────────────
 
-THUMB_DIR = Path('/tmp/replayd_thumbs')
-THUMB_DIR.mkdir(parents=True, exist_ok=True)
+from paths import THUMB_DIR
 _active_thumb_workers: list = []
 
 
@@ -90,6 +89,41 @@ class ThumbWorker(QThread):
 
 
 # ── helpers ───────────────────────────────────────────────────────────────────
+
+_APP_ICON_NAME = 'io.github.rgtd-faustino.replayd'
+
+
+def _find_icon_path() -> Optional[Path]:
+    """Locate the app icon PNG/SVG, checking the dev tree and XDG icon dirs."""
+    import os
+    here = Path(__file__).parent
+    candidates = [
+        here / 'icons' / 'hicolor' / '256x256' / 'apps' / f'{_APP_ICON_NAME}.png',
+        here / 'icons' / 'hicolor' / 'scalable' / 'apps' / f'{_APP_ICON_NAME}.svg',
+    ]
+    xdg_data_dirs = os.environ.get('XDG_DATA_DIRS', '/usr/local/share:/usr/share')
+    for data_dir in xdg_data_dirs.split(':'):
+        candidates.append(
+            Path(data_dir) / 'icons' / 'hicolor' / '256x256' / 'apps' / f'{_APP_ICON_NAME}.png'
+        )
+        candidates.append(
+            Path(data_dir) / 'icons' / 'hicolor' / 'scalable' / 'apps' / f'{_APP_ICON_NAME}.svg'
+        )
+    return next((p for p in candidates if p.exists()), None)
+
+
+def _load_app_icon(size: int) -> Optional[QPixmap]:
+    """Return a QPixmap of the app icon scaled to *size* px, or None."""
+    icon_path = _find_icon_path()
+    if icon_path is None:
+        return None
+    px = QPixmap(str(icon_path))
+    if px.isNull():
+        return None
+    return px.scaled(size, size,
+                     Qt.AspectRatioMode.KeepAspectRatio,
+                     Qt.TransformationMode.SmoothTransformation)
+
 
 def _tray_icon(hex_color: str, size: int = 22) -> QIcon:
     px = QPixmap(size, size)
@@ -311,6 +345,9 @@ class ReplaydWindow(QWidget):
             Qt.WindowType.Tool |
             Qt.WindowType.WindowStaysOnTopHint,
         )
+        _icon_px = _load_app_icon(256)
+        if _icon_px:
+            self.setWindowIcon(QIcon(_icon_px))
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
@@ -351,10 +388,17 @@ class ReplaydWindow(QWidget):
         lay.setContentsMargins(18, 0, 18, 0)
         lay.setSpacing(10)
 
-        logo = QLabel('R')
+        logo = QLabel()
         logo.setFixedSize(30, 30)
         logo.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        logo.setStyleSheet(f'background:{ACC};border-radius:9px;color:#12100d;font-size:17px;font-weight:700;')
+        logo.setStyleSheet('background:transparent;')
+        _icon_px = _load_app_icon(30)
+        if _icon_px:
+            logo.setPixmap(_icon_px)
+        else:
+            # Fallback: orange square with 'R' if icon file not found
+            logo.setText('R')
+            logo.setStyleSheet(f'background:{ACC};border-radius:9px;color:#12100d;font-size:17px;font-weight:700;')
         lay.addWidget(logo)
 
         app_name = QLabel('replayd')
@@ -685,9 +729,8 @@ class ReplaydWindow(QWidget):
 
     @staticmethod
     def _open_path(path: str):
-        if not QDesktopServices.openUrl(QUrl.fromLocalFile(path)):
-            subprocess.Popen(['xdg-open', path],
-                             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # Inside Flatpak, Qt routes this through org.freedesktop.portal.OpenURI automatically.
+        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
 
     def _open_folder(self):
         self._open_path(str(Path(self.cfg['output_dir']).expanduser()))
@@ -786,9 +829,7 @@ class ReplaydWindow(QWidget):
 # ── tray app ──────────────────────────────────────────────────────────────────
 
 class TrayApp:
-    COLOR_RECORDING = '#22cc55'
-    COLOR_SAVING    = '#f5a623'
-    COLOR_STARTUP   = '#3a8ef6'
+    """Window manager — no system tray icon.  The main window is the only UI surface."""
 
     def __init__(self, config: dict, clip_saver, buffer_manager, on_quit=None):
         self.cfg      = config
@@ -801,27 +842,6 @@ class TrayApp:
         self._position_window()
         self.window.show()
 
-        self.tray = QSystemTrayIcon()
-        self.tray.setIcon(_tray_icon(self.COLOR_STARTUP))
-        self.tray.setToolTip('replayd')
-
-        menu     = QMenu()
-        save_act = menu.addAction(f'Save Clip  [{config.get("hotkey","KEY_F9")}]')
-        save_act.triggered.connect(self.window._trigger_save)
-        show_act = menu.addAction('Show / Hide Window')
-        show_act.triggered.connect(self._toggle_window)
-        menu.addSeparator()
-        quit_act = menu.addAction('Quit')
-        quit_act.triggered.connect(self._request_quit)
-
-        self.tray.setContextMenu(menu)
-        self.tray.activated.connect(self._on_tray_activated)
-        self.tray.show()
-
-        self._timer = QTimer()
-        self._timer.timeout.connect(self._refresh_tray)
-        self._timer.start(500)
-
     def _position_window(self):
         screen = QApplication.primaryScreen()
         if screen:
@@ -833,42 +853,12 @@ class TrayApp:
     def mark_ready(self):
         self.window.mark_ready()
 
-    def _toggle_window(self):
-        if self.window.isVisible():
-            self.window.hide()
-        else:
-            self.window.show()
-            self.window.raise_()
-            self.window.activateWindow()
-
     def _request_quit(self):
         if callable(self._on_quit):
             self._on_quit()
         else:
             QApplication.quit()
 
-    def _on_tray_activated(self, reason):
-        if reason == QSystemTrayIcon.ActivationReason.Trigger:
-            self._toggle_window()
-
-    def _refresh_tray(self):
-        if self.clip._busy:
-            self.tray.setIcon(_tray_icon(self.COLOR_SAVING))
-            self.tray.setToolTip('replayd — Saving…')
-        elif self.window._ready:
-            started_at = getattr(self.buf, 'recording_started_at', None)
-            secs = 0.0 if started_at is None else min(
-                time.time() - started_at, self.cfg['seconds_before'])
-            self.tray.setIcon(_tray_icon(self.COLOR_RECORDING))
-            self.tray.setToolTip(f'replayd - {secs:.1f}s buffered')
-
     @staticmethod
     def notify(title: str, body: str):
-        try:
-            subprocess.Popen(
-                ['notify-send', '--app-name=replayd', '--icon=media-record',
-                 '--expire-time=4000', title, body],
-                stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-            )
-        except FileNotFoundError:
-            pass
+        asyncio.ensure_future(_dbus_notify(title, body))

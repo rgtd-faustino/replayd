@@ -13,12 +13,13 @@ from pathlib import Path
 
 from PyQt6.QtWidgets import (
     QApplication, QWidget, QVBoxLayout, QHBoxLayout, QLabel,
-    QLineEdit, QComboBox, QPushButton, QFileDialog,
+    QLineEdit, QComboBox, QPushButton, QFileDialog, QFrame, QGridLayout,
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QTimer, QRect
 from PyQt6.QtGui import QPainter, QColor, QCursor, QBrush, QPen
 
-CONFIG_PATH = Path(__file__).parent / 'config.json'
+from paths import config_file as _config_file
+CONFIG_PATH = _config_file()
 
 # ── colour palette (mirrored from gui.py to avoid circular import) ────────────
 BG    = '#13110f'
@@ -36,15 +37,9 @@ TX3   = '#4e4840'
 
 def _pa_sources() -> list[str]:
     try:
-        r = subprocess.run(
-            ['pactl', 'list', 'short', 'sources'],
-            capture_output=True, text=True, timeout=5,
-        )
-        return [
-            line.split()[1]
-            for line in r.stdout.splitlines()
-            if len(line.split()) >= 2
-        ]
+        import pulsectl
+        with pulsectl.Pulse('replayd-settings') as pulse:
+            return [src.name for src in pulse.source_list()]
     except Exception:
         return []
 
@@ -330,14 +325,14 @@ class SettingsRow(QWidget):
 
     def __init__(self, label: str, sub: str, control: QWidget, parent=None):
         super().__init__(parent)
-        self.setFixedHeight(60)
+        self.setFixedHeight(52)
 
         lay = QHBoxLayout(self)
         lay.setContentsMargins(0, 0, 0, 0)
         lay.setSpacing(12)
 
         info = QVBoxLayout()
-        info.setSpacing(3)
+        info.setSpacing(2)
         info.setContentsMargins(0, 0, 0, 0)
 
         lbl = QLabel(label)
@@ -369,6 +364,18 @@ class SettingsOverlay(QWidget):
     COMBO_AUDIO = ['Game + Mic', 'Game only', 'Mic only']
     COMBO_AFTER = ['Enabled', 'Disabled']
     FORMATS     = ['mp4', 'mkv']
+
+    # Resolution: 'native' keeps the source resolution untouched.
+    # Other values downscale before encoding — trades sharpness for smaller files
+    # (720p ≈ 40-50% smaller than 1080p at the same bitrate).
+    RESOLUTION_KEYS   = ['native', '1920x1080', '1280x720', '960x540', '854x480']
+    RESOLUTION_LABELS = ['Native (source res.)', '1920×1080  (1080p)', '1280×720  (720p)', '960×540  (540p)', '854×480  (480p)']
+
+    # Bitrate cap in kbps. 0 = encoder default (VA-API can pick 10-20 Mbps).
+    # 6000-8000 kbps is transparent at 1080p; 3000-4000 kbps is fine at 720p.
+    BITRATE_KEYS   = [0, 3000, 4000, 5000, 6000, 8000, 10000, 15000, 20000]
+    BITRATE_LABELS = ['Auto (enc. default)', '3 Mbps', '4 Mbps', '5 Mbps', '6 Mbps', '8 Mbps', '10 Mbps', '15 Mbps', '20 Mbps']
+
     COMBO_CODEC = [
         'H.264 (VA-API)',
         'H.265 / HEVC (VA-API)',
@@ -394,10 +401,30 @@ class SettingsOverlay(QWidget):
 
     # ── UI ────────────────────────────────────────────────────────────────────
 
+    @staticmethod
+    def _section_header(title: str) -> QWidget:
+        """Thin label used as a visual section divider."""
+        w = QWidget()
+        w.setStyleSheet('background:transparent; border:none;')
+        lay = QHBoxLayout(w)
+        lay.setContentsMargins(0, 10, 0, 4)
+        lay.setSpacing(8)
+        lbl = QLabel(title.upper())
+        lbl.setStyleSheet(
+            f'color:{TX3}; font-size:9px; font-weight:700; '
+            f'letter-spacing:1.6px; background:transparent; border:none;'
+        )
+        line = QFrame()
+        line.setFrameShape(QFrame.Shape.HLine)
+        line.setStyleSheet(f'background:rgba(255,255,255,0.06); border:none; max-height:1px;')
+        lay.addWidget(lbl)
+        lay.addWidget(line, stretch=1)
+        return w
+
     def _build_ui(self):
         # The visible card – not in a layout so it can be centred manually
         self._card = QWidget(self)
-        self._card.setFixedWidth(388)
+        self._card.setFixedWidth(860)
         self._card.setStyleSheet(f'''
             QWidget {{
                 background: {S1};
@@ -407,14 +434,14 @@ class SettingsOverlay(QWidget):
         ''')
 
         lay = QVBoxLayout(self._card)
-        lay.setContentsMargins(22, 8, 22, 20)
+        lay.setContentsMargins(22, 8, 22, 18)
         lay.setSpacing(0)
 
         # Grab bar – visually indicates draggable area
         grab = _GrabBar()
         grab.setStyleSheet('background:transparent; border:none;')
         lay.addWidget(grab)
-        lay.addSpacing(6)
+        lay.addSpacing(4)
 
         # Header row – title + close button (not a drag zone)
         hdr_w = QWidget()
@@ -438,66 +465,126 @@ class SettingsOverlay(QWidget):
         hdr.addStretch()
         hdr.addWidget(x_btn)
         lay.addWidget(hdr_w)
-        lay.addSpacing(14)
+        lay.addSpacing(10)
 
-        # ── Rows ──────────────────────────────────────────────────────────
+        # ── 2x2 section grid ─────────────────────────────────────────────────
+        grid_host = QWidget()
+        grid_host.setStyleSheet('background:transparent; border:none;')
+        grid = QGridLayout(grid_host)
+        grid.setContentsMargins(0, 0, 0, 0)
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(10)
+        grid.setColumnStretch(0, 1)
+        grid.setColumnStretch(1, 1)
 
-        # Buffer before
+        capture_cell = QFrame()
+        capture_cell.setStyleSheet(f'''
+            QFrame {{
+                background: {S2};
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 12px;
+            }}
+        ''')
+        capture_lay = QVBoxLayout(capture_cell)
+        capture_lay.setContentsMargins(12, 8, 12, 10)
+        capture_lay.setSpacing(0)
+        capture_lay.addWidget(self._section_header('Capture'))
+
         self.sb_before = self._make_spinbox(5, 600)
-        lay.addWidget(SettingsRow('Buffer before', 'Seconds captured before trigger', self._spinbox_with_unit(self.sb_before, 'sec')))
+        capture_lay.addWidget(SettingsRow('Buffer before', 'Seconds captured before trigger', self._spinbox_with_unit(self.sb_before, 'sec')))
 
-        # Buffer after
         self.sb_after = self._make_spinbox(1, 120)
-        lay.addWidget(SettingsRow('Buffer after', 'Extra seconds after trigger', self._spinbox_with_unit(self.sb_after, 'sec')))
+        capture_lay.addWidget(SettingsRow('Buffer after', 'Extra seconds after trigger', self._spinbox_with_unit(self.sb_after, 'sec')))
 
-        # Capture after hotkey
         self.cb_after = QComboBox()
         self.cb_after.addItems(self.COMBO_AFTER)
         self.cb_after.setStyleSheet(self._select_css())
         self.cb_after.currentIndexChanged.connect(self._update_after_controls)
-        lay.addWidget(SettingsRow('After hotkey capture', 'Record extra time after trigger', self.cb_after))
+        capture_lay.addWidget(SettingsRow('After hotkey capture', 'Record extra time after trigger', self.cb_after))
 
-        # Hotkey
         self.le_hotkey = _KeyCapture()
-        lay.addWidget(SettingsRow('Hotkey', 'Click to rebind', self.le_hotkey))
+        capture_lay.addWidget(SettingsRow('Hotkey', 'Click to rebind', self.le_hotkey))
 
-        # Audio mode
-        self.cb_audio = QComboBox()
-        self.cb_audio.addItems(self.COMBO_AUDIO)
-        self.cb_audio.setStyleSheet(self._select_css())
-        lay.addWidget(SettingsRow('Audio capture', 'Sources to record', self.cb_audio))
+        video_cell = QFrame()
+        video_cell.setStyleSheet(f'''
+            QFrame {{
+                background: {S2};
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 12px;
+            }}
+        ''')
+        video_lay = QVBoxLayout(video_cell)
+        video_lay.setContentsMargins(12, 8, 12, 10)
+        video_lay.setSpacing(0)
+        video_lay.addWidget(self._section_header('Video'))
 
-        # Game source (shown when audio ≠ mic-only)
-        self.cb_game_src = self._make_source_combo(_list_monitors)
-        self._row_game = SettingsRow('Game source', 'PulseAudio monitor device', self.cb_game_src)
-        lay.addWidget(self._row_game)
+        self.cb_codec = QComboBox()
+        self.cb_codec.addItems(self.COMBO_CODEC)
+        self.cb_codec.setStyleSheet(self._select_css(width=190))
+        video_lay.addWidget(SettingsRow('Codec', 'GPU encoder to use', self.cb_codec))
 
-        # Mic source (shown when audio ≠ game-only)
-        self.cb_mic_src = self._make_source_combo(_list_mics)
-        self._row_mic = SettingsRow('Mic source', 'PulseAudio input device', self.cb_mic_src)
-        lay.addWidget(self._row_mic)
+        self.cb_resolution = QComboBox()
+        self.cb_resolution.addItems(self.RESOLUTION_LABELS)
+        self.cb_resolution.setStyleSheet(self._select_css(width=190))
+        video_lay.addWidget(SettingsRow('Resolution', 'Downscale before encoding', self.cb_resolution))
 
-        self.cb_audio.currentIndexChanged.connect(self._update_source_rows)
+        self.cb_bitrate = QComboBox()
+        self.cb_bitrate.addItems(self.BITRATE_LABELS)
+        self.cb_bitrate.setStyleSheet(self._select_css(width=160))
+        video_lay.addWidget(SettingsRow('Bitrate', 'Cap encoder output (0 = auto)', self.cb_bitrate))
 
-        # Output format
         self.cb_format = QComboBox()
         self.cb_format.addItems(['MP4', 'MKV'])
         self.cb_format.setStyleSheet(self._select_css())
-        lay.addWidget(SettingsRow('Output format', 'Video container', self.cb_format))
+        video_lay.addWidget(SettingsRow('Container', 'Output file format', self.cb_format))
 
-        # Video codec
-        self.cb_codec = QComboBox()
-        self.cb_codec.addItems(self.COMBO_CODEC)
-        self.cb_codec.setStyleSheet(self._select_css(width=180))
-        lay.addWidget(SettingsRow('Video codec', 'GPU encoder to use', self.cb_codec))
+        audio_cell = QFrame()
+        audio_cell.setStyleSheet(f'''
+            QFrame {{
+                background: {S2};
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 12px;
+            }}
+        ''')
+        audio_lay = QVBoxLayout(audio_cell)
+        audio_lay.setContentsMargins(12, 8, 12, 10)
+        audio_lay.setSpacing(0)
+        audio_lay.addWidget(self._section_header('Audio'))
 
-        # Output folder
+        self.cb_audio = QComboBox()
+        self.cb_audio.addItems(self.COMBO_AUDIO)
+        self.cb_audio.setStyleSheet(self._select_css())
+        audio_lay.addWidget(SettingsRow('Audio capture', 'Sources to record', self.cb_audio))
+
+        self.cb_game_src = self._make_source_combo(_list_monitors)
+        self._row_game = SettingsRow('Game source', 'PulseAudio monitor device', self.cb_game_src)
+        audio_lay.addWidget(self._row_game)
+
+        self.cb_mic_src = self._make_source_combo(_list_mics)
+        self._row_mic = SettingsRow('Mic source', 'PulseAudio input device', self.cb_mic_src)
+        audio_lay.addWidget(self._row_mic)
+
+        self.cb_audio.currentIndexChanged.connect(self._update_source_rows)
+
+        output_cell = QFrame()
+        output_cell.setStyleSheet(f'''
+            QFrame {{
+                background: {S2};
+                border: 1px solid rgba(255,255,255,0.06);
+                border-radius: 12px;
+            }}
+        ''')
+        output_lay = QVBoxLayout(output_cell)
+        output_lay.setContentsMargins(12, 8, 12, 10)
+        output_lay.setSpacing(0)
+        output_lay.addWidget(self._section_header('Output'))
+
         dir_w = self._make_folder_row()
-        lay.addWidget(SettingsRow('Output folder', '', dir_w))
+        output_lay.addWidget(SettingsRow('Output folder', '', dir_w))
 
-        # Recording source — single button, immediately saves + restarts into picker
         self._change_src_btn = QPushButton('Change source…')
         self._change_src_btn.setFixedHeight(34)
+        self._change_src_btn.setMinimumWidth(140)
         self._change_src_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self._change_src_btn.setStyleSheet(f'''
             QPushButton {{
@@ -507,13 +594,19 @@ class SettingsOverlay(QWidget):
             QPushButton:hover {{ background: {S3}; color: {TX}; }}
         ''')
         self._change_src_btn.clicked.connect(self._on_change_source)
-        lay.addWidget(SettingsRow(
+        output_lay.addWidget(SettingsRow(
             'Recording source',
             'Click to pick a different screen or window',
             self._change_src_btn,
         ))
 
-        lay.addSpacing(16)
+        grid.addWidget(capture_cell, 0, 0)
+        grid.addWidget(video_cell, 0, 1)
+        grid.addWidget(audio_cell, 1, 0)
+        grid.addWidget(output_cell, 1, 1)
+        lay.addWidget(grid_host)
+
+        lay.addSpacing(14)
 
         # Action buttons
         btn_row = QHBoxLayout()
@@ -667,6 +760,14 @@ class SettingsOverlay(QWidget):
 
         self._set_combo_text(self.cb_game_src, self.config.get('audio_source', 'auto'))
         self._set_combo_text(self.cb_mic_src,  self.config.get('mic_source',   'auto'))
+        res = self.config.get('recording_resolution', 'native')
+        res_idx = self.RESOLUTION_KEYS.index(res) if res in self.RESOLUTION_KEYS else 0
+        self.cb_resolution.setCurrentIndex(res_idx)
+
+        bitrate = int(self.config.get('video_bitrate_kbps', 0))
+        bitrate_idx = self.BITRATE_KEYS.index(bitrate) if bitrate in self.BITRATE_KEYS else 0
+        self.cb_bitrate.setCurrentIndex(bitrate_idx)
+
         self._update_after_controls()
         self._update_source_rows()
 
@@ -752,9 +853,11 @@ class SettingsOverlay(QWidget):
             'audio_mode':     mode_map[self.cb_audio.currentIndex()],
             'audio_source':   self.cb_game_src.currentText(),
             'mic_source':     self.cb_mic_src.currentText(),
-            'output_format':  self.cb_format.currentText().lower(),
-            'video_codec':    self.CODEC_KEYS[self.cb_codec.currentIndex()],
-            'output_dir':     self.le_outdir.text(),
+            'output_format':        self.cb_format.currentText().lower(),
+            'video_codec':          self.CODEC_KEYS[self.cb_codec.currentIndex()],
+            'recording_resolution': self.RESOLUTION_KEYS[self.cb_resolution.currentIndex()],
+            'video_bitrate_kbps':   self.BITRATE_KEYS[self.cb_bitrate.currentIndex()],
+            'output_dir':           self.le_outdir.text(),
         })
 
         try:

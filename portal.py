@@ -14,9 +14,7 @@ from dbus_next.aio import MessageBus
 from dbus_next.message import Message
 from dbus_next import BusType, Variant
 
-# Saved after the first portal session so subsequent launches with
-# screen_source='desktop' skip the picker completely.
-_TOKEN_PATH = Path(__file__).parent / '.portal_restore_token'
+from paths import restore_token_file as _restore_token_file
 
 
 class WaylandPortal:
@@ -165,7 +163,7 @@ class WaylandPortal:
             # Let user pick any monitor or window; always show picker
             select_opts['types']        = Variant('u', 3)        # MONITOR | WINDOW
             select_opts['persist_mode'] = Variant('u', 2)        # persist permanently
-            _TOKEN_PATH.unlink(missing_ok=True)                  # clear saved token
+            _restore_token_file().unlink(missing_ok=True)                  # clear saved token
             print('[Portal] Custom source mode — screen/window picker will appear.')
         else:
             # Desktop mode: monitor only + restore_token so picker only appears once
@@ -173,9 +171,9 @@ class WaylandPortal:
             select_opts['persist_mode'] = Variant('u', 2)  # persist permanently
 
             restore_token: str | None = None
-            if _TOKEN_PATH.exists():
+            if _restore_token_file().exists():
                 try:
-                    restore_token = _TOKEN_PATH.read_text().strip() or None
+                    restore_token = _restore_token_file().read_text().strip() or None
                 except OSError:
                     restore_token = None
 
@@ -217,7 +215,7 @@ class WaylandPortal:
             token_str = raw_token.value if hasattr(raw_token, 'value') else str(raw_token)
             if token_str:
                 try:
-                    _TOKEN_PATH.write_text(token_str)
+                    _restore_token_file().write_text(token_str)
                     print('[Portal] Restore token saved — picker will be skipped on next launch.')
                 except OSError as exc:
                     print(f'[Portal] Warning: could not save restore token: {exc}')

@@ -48,10 +48,14 @@ Trim and export clips without leaving the app.
 
 - Records your screen continuously into a rolling buffer (no files pile up — it self-cleans).
 - Press your hotkey *after* something happens and it saves the last N seconds automatically.
-- System tray icon with live buffer status.
+- Global hotkey via the **xdg-desktop-portal GlobalShortcuts** API — no `input` group or root access needed.
+- Screen capture via the **xdg-desktop-portal ScreenCast** API — works inside Flatpak sandboxes.
+- The screen picker appears only once; a restore token skips it on every subsequent launch.
+- System tray icon with live buffer status (seconds buffered, saving state).
 - **Built-in clip editor** — trim, mix audio tracks and export, all without leaving the app.
 - Settings UI built-in — no need to edit JSON by hand.
-- Supports desktop/game audio, microphone, or both as separate tracks.
+- Supports desktop/game audio, microphone, or both as separate tracks. When recording both, the clip stores them as independent streams so you can remix them freely in the editor.
+- Auto-detects available hardware encoders (VA-API for Intel/AMD, NVENC for NVIDIA) and falls back to software H.264 automatically.
 
 ---
 
@@ -82,7 +86,7 @@ cd replayd
 bash install.sh
 ```
 
-Then **log out and back in** (required once, so your user gets `/dev/input` access for the global hotkey).
+Then **log out and back in** (only needed if you were already logged in when the install ran, to refresh your environment).
 
 > **Bazzite / Silverblue / Kinoite and other immutable distros:**
 > The installer detects a read-only rootfs and skips system package installation automatically.
@@ -153,23 +157,24 @@ Edit `config.json` or use the ⚙️ settings button in the app window. All chan
 **Available hotkeys (examples):**
 `KEY_F5`, `KEY_F9`, `KEY_F10`, `KEY_F11`, `KEY_F12`, `KEY_HOME`, `KEY_INSERT`, `KEY_SCROLLLOCK`
 
-Full list:
-```bash
-python3 -c "import evdev; print([k for k in evdev.ecodes.ecodes if k.startswith('KEY_')])"
-```
+The key names follow the Linux evdev naming convention (`KEY_` prefix). The hotkey is registered via the **xdg-desktop-portal GlobalShortcuts** API — no special permissions or group membership required. The compositor may show a one-time confirmation dialog when you first set a hotkey.
 
 ---
 
 ## How the buffer works
 
-The app writes short `.mkv` segments (default 5 seconds each) to `/tmp/replayd_buffer/`. It keeps only as many as needed to cover your `seconds_before + seconds_after` window, deleting older ones automatically. When you trigger a save, it waits for the "after" window, then stitches the relevant segments into a single clip with ffmpeg. The `/tmp` buffer is also cleared on exit.
+The app writes short `.mkv` segments (default 5 seconds each) to `$XDG_RUNTIME_DIR/replayd/buffer/` (memory-backed on most systems, falling back to `/tmp/replayd/buffer/`). It keeps only as many segments as needed to cover your `seconds_before + seconds_after` window, deleting older ones automatically. When you trigger a save, it waits for the "after" window, then stitches the relevant segments into a single clip with ffmpeg. The buffer is also cleared on exit.
+
+The screen picker only appears once — a restore token is saved to `~/.config/replayd/` so subsequent launches skip the dialog and connect to the same monitor automatically. To pick a different source, open Settings and click the source button.
 
 ---
 
 ## Troubleshooting
 
-**No hotkey / "No device found"**
-→ You need to be in the `input` group. Run `sudo usermod -a -G input $USER` then log out and back in.
+**No hotkey response**
+→ replayd uses the **xdg-desktop-portal GlobalShortcuts** API — no `input` group or `/dev/input` access is needed. If the hotkey doesn't work, check that `xdg-desktop-portal` is running and supports GlobalShortcuts (requires xdg-desktop-portal ≥ 1.18 and a supporting compositor such as KDE Plasma 6 or GNOME 45+).
+→ On first launch the compositor may show a dialog asking you to confirm the shortcut binding — accept it.
+→ If your compositor doesn't support GlobalShortcuts, the Save Clip button in the app window always works as a fallback.
 
 **Black screen or no video**
 → On the very first launch a screen picker dialog appears — select your monitor and it won't show again. If the picker never appears, check that `xdg-desktop-portal` is running: `systemctl --user status xdg-desktop-portal`. To pick a different source later, open Settings and click the source button.
@@ -199,8 +204,8 @@ The app writes short `.mkv` segments (default 5 seconds each) to `/tmp/replayd_b
 ## Dependencies
 
 **Python packages** (installed by `install.sh` or `pip3 install -r requirements.txt`):
-- `dbus-next` — D-Bus / xdg-desktop-portal for Wayland screen capture
-- `evdev` — global hotkey listener via `/dev/input` (requires `input` group)
+- `dbus-next` — D-Bus / xdg-desktop-portal for Wayland screen capture and global shortcuts
+- `pulsectl` — PulseAudio/PipeWire audio device enumeration
 - `PyQt6` — GUI: tray icon, main window, clip editor, settings overlay
 - `qasync` — bridges asyncio with the Qt event loop
 

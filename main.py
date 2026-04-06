@@ -40,8 +40,19 @@ from gui    import TrayApp
 
 
 def load_config() -> dict:
-    path = Path(__file__).parent / 'config.json'
-    with open(path) as f:
+    import shutil
+    from paths import config_file as _cfg_file
+    cfg_path = _cfg_file()
+    if not cfg_path.exists():
+        # First run: seed from the bundled default shipped alongside the source.
+        bundled = Path(__file__).parent / 'config.json'
+        if bundled.exists():
+            shutil.copy(bundled, cfg_path)
+        else:
+            raise FileNotFoundError(
+                f'No config found at {cfg_path} and no bundled default at {bundled}.'
+            )
+    with open(cfg_path) as f:
         return json.load(f)
 
 
@@ -71,8 +82,8 @@ async def main():
         config['screen_source'] = 'desktop'
         config['current_source_label'] = portal.source_label
         try:
-            path = Path(__file__).parent / 'config.json'
-            path.write_text(json.dumps(config, indent=2))
+            from paths import config_file as _cfg_file
+            _cfg_file().write_text(json.dumps(config, indent=2))
             print(f'[Config] Source locked in as: {portal.source_label}')
         except OSError as e:
             print(f'[Config] Warning: could not save updated source: {e}')
@@ -131,6 +142,13 @@ async def main():
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+
+    # Set the app icon used by the taskbar / window switcher for all windows.
+    from gui import _load_app_icon
+    from PyQt6.QtGui import QIcon as _QIcon
+    _app_px = _load_app_icon(256)
+    if _app_px:
+        app.setWindowIcon(_QIcon(_app_px))
 
     loop = qasync.QEventLoop(app)
     asyncio.set_event_loop(loop)

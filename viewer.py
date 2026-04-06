@@ -36,7 +36,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtMultimedia import QMediaPlayer, QAudioOutput, QVideoSink, QVideoFrame
 from PyQt6.QtCore import Qt, QUrl, pyqtSignal, QFileSystemWatcher, QThread, QTimer
-from PyQt6.QtGui import QPainter, QColor, QCursor, QPixmap, QDesktopServices
+from PyQt6.QtGui import QPainter, QColor, QCursor, QPixmap, QDesktopServices, QIcon
 
 # ── palette ────────────────────────────────────────────────────────────────────
 BG    = '#13110f'
@@ -54,8 +54,7 @@ RED   = '#e45a5a'
 
 
 # ── thumbnails ─────────────────────────────────────────────────────────────────
-THUMB_DIR = Path('/tmp/replayd_thumbs')
-THUMB_DIR.mkdir(parents=True, exist_ok=True)
+from paths import THUMB_DIR
 _active_thumb_workers: list = []
 
 
@@ -525,6 +524,17 @@ class ClipViewer(QWidget):
         self.setMinimumSize(960, 600); self.resize(1160, 740)
         self.setStyleSheet(f'QWidget{{background:{BG};color:{TX};}}')
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, False)
+
+        # Apply the custom app icon so the viewer shows it in the taskbar /
+        # window switcher instead of the Python default icon.
+        try:
+            from gui import _load_app_icon
+            _icon_px = _load_app_icon(256)
+            if _icon_px:
+                self.setWindowIcon(QIcon(_icon_px))
+        except Exception:
+            pass
+
         self._build_ui()
 
         self._watcher = QFileSystemWatcher(self)
@@ -733,8 +743,8 @@ class ClipViewer(QWidget):
 
     def _open_folder(self):
         p = str(Path(self.cfg['output_dir']).expanduser())
-        if not QDesktopServices.openUrl(QUrl.fromLocalFile(p)):
-            import subprocess as _sp; _sp.Popen(['xdg-open', p], stdout=_sp.DEVNULL, stderr=_sp.DEVNULL)
+        # Inside Flatpak, Qt routes this through org.freedesktop.portal.OpenURI automatically.
+        QDesktopServices.openUrl(QUrl.fromLocalFile(p))
 
     # ── clip list ──────────────────────────────────────────────────────────────
 

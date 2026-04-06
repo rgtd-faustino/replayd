@@ -1,11 +1,14 @@
-# Python dependencies for replayd
-# Install with: pip3 install --user -r requirements.txt
-# (or just run install.sh which does this automatically)
+# Runtime dependencies for replayd.
+# Used as input to flatpak-pip-generator to produce the pip sources block
+# in the Flatpak manifest.
 #
-# System dependencies (GStreamer, ffmpeg, PipeWire) are NOT listed here —
-# those are handled by install.sh.
+# PyQt6 and GStreamer bindings come from the Freedesktop SDK and are NOT listed
+# here -- they are available at runtime through the org.freedesktop.Platform SDK.
+#
+# Generate manifest pip sources:
+#   python3 flatpak-pip-generator --runtime=org.freedesktop.Platform//24.08 \
+#       dbus-next pulsectl qasync
 
-dbus-next>=0.2.3   # D-Bus / xdg-desktop-portal for Wayland screen capture
-evdev>=1.6.1       # Global hotkey listener via /dev/input (requires 'input' group)
-PyQt6>=6.4.0       # GUI: tray icon, main window, settings overlay
-qasync>=0.27.0     # Bridges Python asyncio with the Qt event loop
+dbus-next>=0.2.3
+pulsectl>=23.5.2
+qasync>=0.27.1
