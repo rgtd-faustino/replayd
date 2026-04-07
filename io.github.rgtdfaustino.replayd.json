@@ -1,0 +1,113 @@
+{
+  "app-id": "io.github.rgtdfaustino.replayd",
+  "runtime": "org.kde.Platform",
+  "runtime-version": "6.9",
+  "sdk": "org.kde.Sdk",
+  "base": "com.riverbankcomputing.PyQt.BaseApp",
+  "base-version": "6.9",
+  "command": "replayd",
+
+  "build-options": {
+    "env": {
+      "PYTHONPATH": "/app/lib/python3/site-packages"
+    }
+  },
+
+  "finish-args": [
+    "--socket=wayland",
+    "--socket=pulseaudio",
+    "--device=dri",
+    "--filesystem=xdg-videos",
+    "--filesystem=xdg-run/pipewire-0",
+    "--talk-name=org.freedesktop.portal.Desktop",
+    "--talk-name=org.freedesktop.portal.GlobalShortcuts",
+    "--talk-name=org.freedesktop.Notifications",
+    "--talk-name=org.pipewire.policy",
+    "--talk-name=org.freedesktop.portal.Request",
+    "--talk-name=org.freedesktop.portal.Session",
+    "--talk-name=org.freedesktop.portal.ScreenCast"
+  ],
+
+  "modules": [
+    {
+      "name": "python3-dbus-next",
+      "buildsystem": "simple",
+      "build-commands": [
+        "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"dbus-next\" --no-build-isolation"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "url": "https://files.pythonhosted.org/packages/d2/fc/c0a3f4c4eaa5a22fbef91713474666e13d0ea2a69c84532579490a9f2cc8/dbus_next-0.2.3-py3-none-any.whl",
+          "sha256": "58948f9aff9db08316734c0be2a120f6dc502124d9642f55e90ac82ffb16a18b"
+        }
+      ]
+    },
+    {
+      "name": "python3-pulsectl",
+      "buildsystem": "simple",
+      "build-commands": [
+        "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"pulsectl\" --no-build-isolation"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "url": "https://files.pythonhosted.org/packages/62/a9/5b119f86dd1a053c55da7d0355fca2ad215bae6f7f4777d46b307a8cc3e9/pulsectl-24.12.0-py2.py3-none-any.whl",
+          "sha256": "13a60be940594f03ead3245b3dfe3aff4a3f9a792af347674bde5e716d4f76d2"
+        }
+      ]
+    },
+    {
+      "name": "python3-qasync",
+      "buildsystem": "simple",
+      "build-commands": [
+        "pip3 install --verbose --exists-action=i --no-index --find-links=\"file://${PWD}\" --prefix=${FLATPAK_DEST} \"qasync\" --no-build-isolation"
+      ],
+      "sources": [
+        {
+          "type": "file",
+          "url": "https://files.pythonhosted.org/packages/e5/84/0ce4cd946f6e958428c87d5accac35df70f81607e45ba4919947d0762d63/qasync-0.28.0-py3-none-any.whl",
+          "sha256": "21faba8d047c717008378f5ac29ea58c32a8128528629e4afd57c59b768dba0f"
+        }
+      ]
+    },
+    {
+      "name": "ffmpeg",
+      "config-opts": [
+        "--enable-gpl",
+        "--enable-libvorbis",
+        "--enable-libopus",
+        "--enable-vaapi",
+        "--disable-static",
+        "--enable-shared"
+      ],
+      "sources": [
+        {
+          "type": "archive",
+          "url": "https://ffmpeg.org/releases/ffmpeg-7.1.tar.xz",
+          "sha256": "40973d44970dbc83ef302b0609f2e74982be2d85916dd2ee7472d30678a7abe6"
+        }
+      ]
+    },
+    {
+      "name": "replayd",
+      "buildsystem": "simple",
+      "build-commands": [
+        "install -Dm644 io.github.rgtdfaustino.replayd.desktop ${FLATPAK_DEST}/share/applications/io.github.rgtdfaustino.replayd.desktop",
+        "install -Dm644 io.github.rgtdfaustino.replayd.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.rgtdfaustino.replayd.metainfo.xml",
+        "install -Dm644 icons/hicolor/256x256/apps/io.github.rgtdfaustino.replayd.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.rgtdfaustino.replayd.png",
+        "install -Dm644 icons/hicolor/scalable/apps/io.github.rgtdfaustino.replayd.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.rgtdfaustino.replayd.svg",
+        "install -d ${FLATPAK_DEST}/share/replayd",
+        "install -Dm644 config.json ${FLATPAK_DEST}/share/replayd/config.json",
+        "for f in buffer.py clip.py gui.py hotkey.py main.py paths.py portal.py settings.py viewer.py; do install -Dm644 $f ${FLATPAK_DEST}/share/replayd/$f; done",
+        "install -Dm755 replayd.sh ${FLATPAK_DEST}/bin/replayd"
+      ],
+      "sources": [
+        {
+          "type": "dir",
+          "path": "."
+        }
+      ]
+    }
+  ]
+}

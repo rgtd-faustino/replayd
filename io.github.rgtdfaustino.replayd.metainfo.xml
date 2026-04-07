@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.rgtd-faustino.replayd</id>
+  <id>io.github.rgtdfaustino.replayd</id>
 
   <name>replayd</name>
   <summary>Instant replay buffer for Wayland</summary>
@@ -25,12 +25,12 @@
     </ul>
   </description>
 
-  <launchable type="desktop-id">io.github.rgtd-faustino.replayd.desktop</launchable>
+  <launchable type="desktop-id">io.github.rgtdfaustino.replayd.desktop</launchable>
 
   <url type="homepage">https://github.com/rgtd-faustino/replayd</url>
   <url type="bugtracker">https://github.com/rgtd-faustino/replayd/issues</url>
 
-  <developer id="io.github.rgtd-faustino">
+  <developer id="io.github.rgtdfaustino">
     <name>rgtd-faustino</name>
   </developer>
 
@@ -68,15 +68,15 @@
   <screenshots>
     <screenshot type="default">
       <caption>Main window showing buffer state and recent clips</caption>
-      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/screenshots/main.png</image>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/assets/main-window.png</image>
     </screenshot>
     <screenshot>
       <caption>Clip viewer with trim timeline and audio mixer</caption>
-      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/screenshots/viewer.png</image>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/assets/clip-editor-window.png</image>
     </screenshot>
     <screenshot>
       <caption>Settings panel</caption>
-      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/screenshots/settings.png</image>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/assets/settings.png</image>
     </screenshot>
   </screenshots>
 

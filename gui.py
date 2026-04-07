@@ -90,7 +90,7 @@ class ThumbWorker(QThread):
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-_APP_ICON_NAME = 'io.github.rgtd-faustino.replayd'
+_APP_ICON_NAME = 'io.github.rgtdfaustino.replayd'
 
 
 def _find_icon_path() -> Optional[Path]:
@@ -594,7 +594,7 @@ class ReplaydWindow(QWidget):
         lay.addLayout(self._clips_lay)
 
         # ── full-width Clip Viewer button ──────────────────────────────────────
-        self._viewer_btn = QPushButton('🎬   View All Clips')
+        self._viewer_btn = QPushButton('View All Clips')
         self._viewer_btn.setFixedHeight(42)
         self._viewer_btn.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
         self._viewer_btn.setStyleSheet(self._viewer_btn_css(active=False))

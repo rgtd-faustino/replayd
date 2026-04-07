@@ -64,7 +64,7 @@ async def main():
     print('╠══════════════════════════════════╣')
     print(f'║  Before : {config["seconds_before"]:>3}s                    ║')
     print(f'║  After  : {config["seconds_after"]:>3}s                    ║')
-    print(f'║  Hint   : {config["hotkey"]:<22}  ║')
+    print(f'║  Hint   : {"(set in KDE Shortcuts)":<22}  ║')
     print(f'║  Output : {str(Path(config["output_dir"]).expanduser())[:21]:<21}  ║')
     print('╚══════════════════════════════════╝')
     print()
