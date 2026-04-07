@@ -100,7 +100,19 @@ def _find_icon_path() -> Optional[Path]:
     candidates = [
         here / 'icons' / 'hicolor' / '256x256' / 'apps' / f'{_APP_ICON_NAME}.png',
         here / 'icons' / 'hicolor' / 'scalable' / 'apps' / f'{_APP_ICON_NAME}.svg',
+        # Common Flatpak install location (icons are not under /app/share/replayd).
+        Path('/app/share/icons/hicolor/256x256/apps') / f'{_APP_ICON_NAME}.png',
+        Path('/app/share/icons/hicolor/scalable/apps') / f'{_APP_ICON_NAME}.svg',
     ]
+
+    # When running from an installed tree, Python modules may be in
+    # /app/share/replayd while icons live in /app/share/icons.
+    parent = here.parent
+    candidates.extend([
+        parent / 'icons' / 'hicolor' / '256x256' / 'apps' / f'{_APP_ICON_NAME}.png',
+        parent / 'icons' / 'hicolor' / 'scalable' / 'apps' / f'{_APP_ICON_NAME}.svg',
+    ])
+
     xdg_data_dirs = os.environ.get('XDG_DATA_DIRS', '/usr/local/share:/usr/share')
     for data_dir in xdg_data_dirs.split(':'):
         candidates.append(
@@ -114,6 +126,13 @@ def _find_icon_path() -> Optional[Path]:
 
 def _load_app_icon(size: int) -> Optional[QPixmap]:
     """Return a QPixmap of the app icon scaled to *size* px, or None."""
+    # First, try themed icon lookup. This is what desktop shells typically use.
+    themed = QIcon.fromTheme(_APP_ICON_NAME)
+    if not themed.isNull():
+        themed_px = themed.pixmap(size, size)
+        if not themed_px.isNull():
+            return themed_px
+
     icon_path = _find_icon_path()
     if icon_path is None:
         return None

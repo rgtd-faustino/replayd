@@ -106,7 +106,7 @@
       "sources": [
         {
           "type": "archive",
-          "url": "https://github.com/rgtd-faustino/replayd/archive/refs/tags/v1.4.5.tar.gz",
+          "url": "https://github.com/rgtd-faustino/replayd/archive/refs/tags/v1.4.6.tar.gz",
           "sha256": "220ed3159ec2b1278b6401f28fda3eeceb40cbb7397cf42da83f43f2a6e2523c"
         }
       ]

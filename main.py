@@ -30,6 +30,7 @@ if not os.environ.get('WAYLAND_DISPLAY'):
     sys.exit(1)
 
 from PyQt6.QtWidgets import QApplication
+from PyQt6.QtGui import QGuiApplication
 import qasync
 
 from portal import WaylandPortal
@@ -142,6 +143,10 @@ async def main():
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     app.setQuitOnLastWindowClosed(False)
+
+    # Wayland/KDE task managers resolve icon/grouping via desktop file name.
+    QGuiApplication.setDesktopFileName('io.github.rgtd_faustino.replayd.desktop')
+    app.setApplicationName('replayd')
 
     # Set the app icon used by the taskbar / window switcher for all windows.
     from gui import _load_app_icon
