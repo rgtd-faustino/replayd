@@ -9,3 +9,4 @@ Type=Application
 Categories=AudioVideo;Video;Recorder;
 Keywords=replay;recording;capture;wayland;gaming;clip;shadowplay;
 StartupWMClass=replayd
+StartupNotify=true

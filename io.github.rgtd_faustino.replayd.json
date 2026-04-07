@@ -76,8 +76,6 @@
       "name": "ffmpeg",
       "config-opts": [
         "--enable-gpl",
-        "--enable-libvorbis",
-        "--enable-libopus",
         "--enable-vaapi",
         "--disable-static",
         "--enable-shared"
@@ -98,6 +96,7 @@
         "install -Dm644 io.github.rgtd_faustino.replayd.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.rgtd_faustino.replayd.metainfo.xml",
         "install -Dm644 icons/hicolor/256x256/apps/io.github.rgtd_faustino.replayd.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.rgtd_faustino.replayd.png",
         "install -Dm644 icons/hicolor/scalable/apps/io.github.rgtd_faustino.replayd.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.rgtd_faustino.replayd.svg",
+        "install -Dm644 LICENSE ${FLATPAK_DEST}/share/licenses/io.github.rgtd_faustino.replayd/LICENSE",
         "install -d ${FLATPAK_DEST}/share/replayd",
         "install -Dm644 config.json ${FLATPAK_DEST}/share/replayd/config.json",
         "for f in buffer.py clip.py gui.py hotkey.py main.py paths.py portal.py settings.py viewer.py; do install -Dm644 $f ${FLATPAK_DEST}/share/replayd/$f; done",
@@ -106,7 +105,7 @@
       "sources": [
         {
           "type": "archive",
-          "url": "https://github.com/rgtd-faustino/replayd/archive/refs/tags/v1.4.6.tar.gz",
+          "url": "https://github.com/rgtd-faustino/replayd/archive/refs/tags/v1.4.7.tar.gz",
           "sha256": "fd42a82826a9e7fb24385dab3a5bd1236aef1297eb07fc71bdf8547c3bf43e8e"
         }
       ]
