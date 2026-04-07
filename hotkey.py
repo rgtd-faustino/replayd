@@ -108,6 +108,31 @@ class HotkeyListener:
         self._sender = self._bus.unique_name.lstrip(':').replace('.', '_')
         print(f'[Hotkey] D-Bus connected as {self._bus.unique_name}')
 
+        # Claim a well-known D-Bus name so xdg-desktop-portal can use it as a
+        # stable app-id for GlobalShortcuts.  Without this the portal falls back
+        # to the unique bus name (:1.xxx), which changes every run — KDE then
+        # treats each launch as a new application and the hotkey binding is lost.
+        # Flag 4 = DBUS_NAME_FLAG_DO_NOT_QUEUE: if a stale instance still holds
+        # the name we skip the claim rather than blocking.
+        _WELL_KNOWN = 'io.github.rgtd_faustino.replayd'
+        try:
+            _nr = await self._bus.call(Message(
+                destination = 'org.freedesktop.DBus',
+                path        = '/org/freedesktop/DBus',
+                interface   = 'org.freedesktop.DBus',
+                member      = 'RequestName',
+                signature   = 'su',
+                body        = [_WELL_KNOWN, 4],
+            ))
+            _code = _nr.body[0] if _nr.body else -1
+            if _code == 1:
+                print(f'[Hotkey] Well-known name acquired: {_WELL_KNOWN}')
+            else:
+                print(f'[Hotkey] Name not acquired (reply={_code}) — '
+                      'hotkey may need one-time re-binding in KDE Shortcuts.')
+        except Exception as _e:
+            print(f'[Hotkey] RequestName skipped: {_e}')
+
         # 1. CreateSession
         t_req = self._token('req')
         t_ses = self._token('ses')

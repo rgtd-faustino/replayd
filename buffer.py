@@ -269,7 +269,6 @@ class BufferManager:
             fallback = 'h264_soft' if 'h264_soft' in available else (available[0] if available else 'h264_soft')
             print(f'[Buffer] Codec "{codec_key}" not available, falling back to "{fallback}"')
             codec_key = fallback
-            self.cfg['video_codec'] = codec_key
         print(f'[Buffer] Codec: {codec_key}  (available: {available})')
 
         audio_mode = self.cfg.get('audio_mode', 'both')
