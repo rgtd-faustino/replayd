@@ -90,7 +90,7 @@ class ThumbWorker(QThread):
 
 # ── helpers ───────────────────────────────────────────────────────────────────
 
-_APP_ICON_NAME = 'io.github.rgtdfaustino.replayd'
+_APP_ICON_NAME = 'io.github.rgtd_faustino.replayd'
 
 
 def _find_icon_path() -> Optional[Path]:

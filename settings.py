@@ -108,111 +108,6 @@ class _GrabBar(QWidget):
                 handle.startSystemMove()
         super().mousePressEvent(e)
 
-# ── key capture widget ────────────────────────────────────────────────────────
-
-class _KeyCapture(QWidget):
-    """
-    Click to enter listening mode → next keypress becomes the new hotkey.
-    Displays the current binding as a badge; while listening shows 'Press a key…'.
-    Escape cancels. Converts Qt key names to evdev KEY_* format.
-    """
-
-    IDLE      = 0
-    LISTENING = 1
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._state   = self.IDLE
-        self._key     = 'KEY_F9'
-        self.setFixedSize(110, 32)
-        self.setCursor(QCursor(Qt.CursorShape.PointingHandCursor))
-        self.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
-
-    # ── public API ────────────────────────────────────────────────────────────
-
-    def text(self) -> str:
-        return self._key
-
-    def setText(self, key: str):
-        self._key = key
-        self.update()
-
-    # ── interaction ───────────────────────────────────────────────────────────
-
-    def mousePressEvent(self, e):
-        if e.button() == Qt.MouseButton.LeftButton:
-            self._state = self.LISTENING
-            self.setFocus()
-            self.update()
-        super().mousePressEvent(e)
-
-    def focusOutEvent(self, e):
-        self._state = self.IDLE
-        self.update()
-        super().focusOutEvent(e)
-
-    def keyPressEvent(self, e):
-        if self._state != self.LISTENING:
-            return
-
-        key = e.key()
-
-        # Escape → cancel
-        if key == Qt.Key.Key_Escape:
-            self._state = self.IDLE
-            self.update()
-            return
-
-        # Try to get the evdev name from Qt's enum
-        try:
-            qt_name  = Qt.Key(key).name          # e.g. "Key_F9", "Key_Home"
-            evdev    = 'KEY_' + qt_name[4:].upper()   # → "KEY_F9", "KEY_HOME"
-        except Exception:
-            return   # unknown key — keep listening
-
-        self._key   = evdev
-        self._state = self.IDLE
-        self.clearFocus()
-        self.update()
-
-    # ── painting ──────────────────────────────────────────────────────────────
-
-    def paintEvent(self, _event):
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        listening = self._state == self.LISTENING
-
-        # Background
-        if listening:
-            bg = QColor(ACC)
-            bg.setAlpha(30)
-        else:
-            bg = QColor(S2)
-        border = QColor(ACC) if listening else QColor(255, 255, 255, 20)
-
-        p.setBrush(QBrush(bg))
-        p.setPen(QPen(border, 1))
-        p.drawRoundedRect(0, 0, self.width() - 1, self.height() - 1, 8, 8)
-
-        # Label
-        if listening:
-            label = 'Press a key…'
-            color = QColor(ACC)
-        else:
-            label = self._key
-            color = QColor(TX)
-
-        p.setPen(QPen(color))
-        font = p.font()
-        font.setPointSize(9)
-        font.setBold(not listening)
-        p.setFont(font)
-        p.drawText(self.rect(), Qt.AlignmentFlag.AlignCenter, label)
-        p.end()
-
-# ── custom spinbox (replaces QSpinBox — always shows visible +/− buttons) ─────
-
 class _SpinBox(QWidget):
     """
     Drop-in replacement for QSpinBox with always-visible, styled +/− buttons.
@@ -862,7 +757,7 @@ class SettingsOverlay(QWidget):
         # Passing the component name focuses the view on the replayd shortcuts.
         if shutil.which('kcmshell6'):
             subprocess.Popen(
-                ['kcmshell6', 'keys', '--args', 'io.github.rgtd-faustino.replayd'],
+                ['kcmshell6', 'keys', '--args', 'io.github.rgtd_faustino.replayd'],
                 start_new_session=True,
             )
         elif shutil.which('kcmshell5'):

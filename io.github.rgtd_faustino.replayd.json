@@ -1,10 +1,10 @@
 {
-  "app-id": "io.github.rgtdfaustino.replayd",
+  "app-id": "io.github.rgtd_faustino.replayd",
   "runtime": "org.kde.Platform",
-  "runtime-version": "6.9",
+  "runtime-version": "6.8",
   "sdk": "org.kde.Sdk",
   "base": "com.riverbankcomputing.PyQt.BaseApp",
-  "base-version": "6.9",
+  "base-version": "6.8",
   "command": "replayd",
 
   "build-options": {
@@ -16,6 +16,7 @@
   "finish-args": [
     "--socket=wayland",
     "--socket=pulseaudio",
+    "--share=ipc",
     "--device=dri",
     "--filesystem=xdg-videos",
     "--filesystem=xdg-run/pipewire-0",
@@ -93,10 +94,10 @@
       "name": "replayd",
       "buildsystem": "simple",
       "build-commands": [
-        "install -Dm644 io.github.rgtdfaustino.replayd.desktop ${FLATPAK_DEST}/share/applications/io.github.rgtdfaustino.replayd.desktop",
-        "install -Dm644 io.github.rgtdfaustino.replayd.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.rgtdfaustino.replayd.metainfo.xml",
-        "install -Dm644 icons/hicolor/256x256/apps/io.github.rgtdfaustino.replayd.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.rgtdfaustino.replayd.png",
-        "install -Dm644 icons/hicolor/scalable/apps/io.github.rgtdfaustino.replayd.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.rgtdfaustino.replayd.svg",
+        "install -Dm644 io.github.rgtd_faustino.replayd.desktop ${FLATPAK_DEST}/share/applications/io.github.rgtd_faustino.replayd.desktop",
+        "install -Dm644 io.github.rgtd_faustino.replayd.metainfo.xml ${FLATPAK_DEST}/share/metainfo/io.github.rgtd_faustino.replayd.metainfo.xml",
+        "install -Dm644 icons/hicolor/256x256/apps/io.github.rgtd_faustino.replayd.png ${FLATPAK_DEST}/share/icons/hicolor/256x256/apps/io.github.rgtd_faustino.replayd.png",
+        "install -Dm644 icons/hicolor/scalable/apps/io.github.rgtd_faustino.replayd.svg ${FLATPAK_DEST}/share/icons/hicolor/scalable/apps/io.github.rgtd_faustino.replayd.svg",
         "install -d ${FLATPAK_DEST}/share/replayd",
         "install -Dm644 config.json ${FLATPAK_DEST}/share/replayd/config.json",
         "for f in buffer.py clip.py gui.py hotkey.py main.py paths.py portal.py settings.py viewer.py; do install -Dm644 $f ${FLATPAK_DEST}/share/replayd/$f; done",
@@ -104,8 +105,9 @@
       ],
       "sources": [
         {
-          "type": "dir",
-          "path": "."
+          "type": "archive",
+          "url": "https://github.com/rgtd-faustino/replayd/archive/refs/tags/v1.4.2.tar.gz",
+          "sha256": "1ee0f9ba16312b61819410a7140d5b7ef7981c76cc8618e5224701e2e61010cf"
         }
       ]
     }

@@ -2,13 +2,18 @@
 # Used as input to flatpak-pip-generator to produce the pip sources block
 # in the Flatpak manifest.
 #
-# PyQt6 and GStreamer bindings come from the Freedesktop SDK and are NOT listed
-# here -- they are available at runtime through the org.freedesktop.Platform SDK.
+# In the Flatpak build, PyQt6 comes from com.riverbankcomputing.PyQt.BaseApp
+# and GStreamer bindings come from org.kde.Platform — they are NOT installed
+# by pip in that context.
+#
+# For a native (non-Flatpak) install, PyQt6 must be installed via pip or your
+# distro package manager (e.g. python3-pyqt6).
 #
 # Generate manifest pip sources:
-#   python3 flatpak-pip-generator --runtime=org.freedesktop.Platform//24.08 \
+#   python3 flatpak-pip-generator --runtime=org.kde.Platform//6.8 \
 #       dbus-next pulsectl qasync
 
 dbus-next>=0.2.3
 pulsectl>=23.5.2
 qasync>=0.27.1
+PyQt6>=6.6.0

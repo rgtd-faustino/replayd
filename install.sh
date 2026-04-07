@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 set -e
 
-echo "=== Replayd Linux - Installer ==="
+echo "=== Replayd Linux - Installer (native / non-Flatpak) ==="
+echo
+echo "If you installed via Flatpak, you do not need this script."
 echo
 
 # ── detect immutable / atomic distro ─────────────────────────────────────────
@@ -47,6 +49,7 @@ else
                 ffmpeg \
                 python3-pip \
                 python3-dev \
+                python3-pyqt6 \
                 libdbus-1-dev \
                 pipewire \
                 pipewire-pulse \
@@ -75,6 +78,7 @@ else
             sudo pacman -Sy --noconfirm \
                 ffmpeg \
                 python-pip \
+                python-pyqt6 \
                 dbus \
                 pipewire \
                 pipewire-pulse \
@@ -119,6 +123,7 @@ else
             sudo dnf install -y \
                 ffmpeg \
                 python3-pip \
+                python3-pyqt6 \
                 python3-devel \
                 dbus-devel \
                 pipewire \
@@ -152,6 +157,7 @@ else
             sudo zypper install -y \
                 ffmpeg \
                 python3-pip \
+                python3-qt6 \
                 python3-devel \
                 dbus-1-devel \
                 pipewire \
@@ -177,6 +183,8 @@ fi
 
 echo ""
 echo "[2/4] Installing Python dependencies..."
+# PyQt6 is installed above via the system package manager where possible.
+# pip install covers dbus-next, pulsectl, qasync, and PyQt6 as fallback.
 pip3 install --user -r requirements.txt
 
 echo ""
@@ -186,17 +194,22 @@ mkdir -p ~/Videos/Replayd
 echo ""
 echo "Done! Next steps:"
 echo "  1. Edit config.json to set seconds_before/after, codec, etc."
+echo "     (or use the Settings button inside the app)"
 echo "  2. Run:  python3 main.py"
 echo "  3. On first launch the screen picker appears once — select your monitor."
-echo "  4. Open KDE System Settings > Shortcuts > Global Shortcuts > replayd"
-echo "     to bind the save-clip shortcut to whichever key you prefer."
+echo ""
+echo "  4. Setting the hotkey:"
+echo "     - KDE Plasma: Settings (⚙) → Open KDE Shortcuts…"
+echo "       or: System Settings → Shortcuts → Global Shortcuts → replayd"
+echo "     - GNOME: Settings (⚙) opens a note; bind via GNOME Settings → Keyboard → Shortcuts"
+echo "     - Other compositors: use the Save Clip button in the window (hotkey portal may not be supported)"
 echo ""
 echo "How it works:"
 echo "  - main.py records your screen in a rolling buffer the whole time it runs."
 echo "  - Press your configured hotkey AFTER something happens."
 echo "  - It saves the last seconds_before seconds + waits seconds_after more,"
 echo "    then drops the clip in ~/Videos/Replayd/ automatically."
-echo "  - The /tmp buffer is pruned automatically - it won't fill your disk."
+echo "  - The buffer is pruned automatically - it won't fill your disk."
 echo ""
-echo "Hotkeys are managed by KDE Global Shortcuts via xdg-desktop-portal."
-echo "No 'input' group membership is required."
+echo "Hotkeys use xdg-desktop-portal GlobalShortcuts (no 'input' group needed)."
+echo "Requires xdg-desktop-portal >= 1.18 with KDE Plasma 6 or GNOME 45+."

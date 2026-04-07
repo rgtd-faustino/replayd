@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <component type="desktop-application">
-  <id>io.github.rgtdfaustino.replayd</id>
+  <id>io.github.rgtd_faustino.replayd</id>
 
   <name>replayd</name>
   <summary>Instant replay buffer for Wayland</summary>
@@ -25,12 +25,12 @@
     </ul>
   </description>
 
-  <launchable type="desktop-id">io.github.rgtdfaustino.replayd.desktop</launchable>
+  <launchable type="desktop-id">io.github.rgtd_faustino.replayd.desktop</launchable>
 
   <url type="homepage">https://github.com/rgtd-faustino/replayd</url>
   <url type="bugtracker">https://github.com/rgtd-faustino/replayd/issues</url>
 
-  <developer id="io.github.rgtdfaustino">
+  <developer id="io.github.rgtd_faustino">
     <name>rgtd-faustino</name>
   </developer>
 
@@ -81,7 +81,7 @@
   </screenshots>
 
   <releases>
-    <release version="1.0.0" date="2026-04-06">
+    <release version="1.4.3" date="2026-04-07">
       <description>
         <p>Initial Flathub release.</p>
         <ul>
