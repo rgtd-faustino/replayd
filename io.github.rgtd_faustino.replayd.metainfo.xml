@@ -74,20 +74,20 @@
   <screenshots>
     <screenshot type="default">
       <caption>Main window showing buffer state and recent clips</caption>
-      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/v1.4.9/assets/main-window.png</image>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/v1.4.10/assets/main-window.png</image>
     </screenshot>
     <screenshot>
       <caption>Clip viewer with trim timeline and audio mixer</caption>
-      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/v1.4.9/assets/clip-editor-window.png</image>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/v1.4.10/assets/clip-editor-window.png</image>
     </screenshot>
     <screenshot>
       <caption>Settings panel</caption>
-      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/v1.4.9/assets/settings.png</image>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/v1.4.10/assets/settings.png</image>
     </screenshot>
   </screenshots>
 
   <releases>
-    <release version="1.4.9" date="2026-04-07">
+    <release version="1.4.10" date="2026-04-07">
       <description>
         <p>Initial Flathub release.</p>
         <ul>
