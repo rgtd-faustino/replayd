@@ -759,17 +759,15 @@ class ReplaydWindow(QWidget):
             print(f'[GUI] Could not create output folder: {e}')
             return
 
-        # Inside Flatpak, Qt routes this through org.freedesktop.portal.OpenURI automatically.
+        if os.path.exists('/.flatpak-info'):
+            # Inside Flatpak: must use OpenDirectory portal with a real fd.
+            asyncio.ensure_future(ReplaydWindow._portal_open_directory(resolved))
+            return
+
+        # Outside sandbox: QDesktopServices or xdg-open fallback.
         ok = QDesktopServices.openUrl(QUrl.fromLocalFile(str(resolved.resolve())))
         if ok:
             return
-
-        # Keep Flatpak runs portal-only; use native fallback only outside sandbox.
-        if os.path.exists('/.flatpak-info'):
-            print('[GUI] Could not open output folder via portal/Qt.')
-            return
-
-        # Fallback for native environments where QDesktopServices has no handler.
         try:
             subprocess.Popen(
                 ['xdg-open', str(resolved.resolve())],
@@ -778,6 +776,33 @@ class ReplaydWindow(QWidget):
             )
         except OSError as e:
             print(f'[GUI] Could not open output folder: {e}')
+
+    @staticmethod
+    async def _portal_open_directory(path: Path):
+        """Call org.freedesktop.portal.OpenURI.OpenDirectory with an fd."""
+        import os
+        from dbus_next.aio import MessageBus
+        from dbus_next.message import Message
+        from dbus_next import BusType
+        fd = -1
+        try:
+            fd  = os.open(str(path.resolve()), os.O_RDONLY | os.O_DIRECTORY)
+            bus = await MessageBus(bus_type=BusType.SESSION).connect()
+            await bus.call(Message(
+                destination = 'org.freedesktop.portal.Desktop',
+                path        = '/org/freedesktop/portal/desktop',
+                interface   = 'org.freedesktop.portal.OpenURI',
+                member      = 'OpenDirectory',
+                signature   = 'sha{sv}',
+                body        = ['', fd, {}],
+            ))
+            bus.disconnect()
+            print(f'[GUI] Opened folder via portal: {path}')
+        except Exception as e:
+            print(f'[GUI] Portal OpenDirectory failed: {e}')
+        finally:
+            if fd >= 0:
+                os.close(fd)
 
     def _open_folder(self):
         self._open_path(self.cfg['output_dir'])
