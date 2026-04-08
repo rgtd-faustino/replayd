@@ -779,30 +779,35 @@ class ReplaydWindow(QWidget):
 
     @staticmethod
     async def _portal_open_directory(path: Path):
-        """Call org.freedesktop.portal.OpenURI.OpenDirectory with an fd."""
         import os
         from dbus_next.aio import MessageBus
         from dbus_next.message import Message
         from dbus_next import BusType
         fd = -1
         try:
-            fd  = os.open(str(path.resolve()), os.O_RDONLY | os.O_DIRECTORY)
-            bus = await MessageBus(bus_type=BusType.SESSION).connect()
-            await bus.call(Message(
+            fd = os.open(str(path.resolve()), os.O_RDONLY | os.O_DIRECTORY)
+            # negotiate_unix_fd=True é obrigatório para enviar fds pelo D-Bus
+            bus = await MessageBus(bus_type=BusType.SESSION, negotiate_unix_fd=True).connect()
+            reply = await bus.call(Message(
                 destination = 'org.freedesktop.portal.Desktop',
                 path        = '/org/freedesktop/portal/desktop',
                 interface   = 'org.freedesktop.portal.OpenURI',
                 member      = 'OpenDirectory',
                 signature   = 'sha{sv}',
-                body        = ['', fd, {}],
+                body        = ['', 0, {}],  # 0 = índice 0 em unix_fds
+                unix_fds    = [fd],         # ← fd real aqui, NÃO no body
             ))
             bus.disconnect()
-            print(f'[GUI] Opened folder via portal: {path}')
+            if reply and reply.message_type.name == 'ERROR':
+                print(f'[GUI] Portal OpenDirectory error: {reply.body}')
+            else:
+                print(f'[GUI] Opened folder via portal: {path}')
         except Exception as e:
             print(f'[GUI] Portal OpenDirectory failed: {e}')
         finally:
             if fd >= 0:
-                os.close(fd)
+                try: os.close(fd)
+                except OSError: pass
 
     def _open_folder(self):
         self._open_path(self.cfg['output_dir'])

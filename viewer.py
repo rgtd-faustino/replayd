@@ -743,6 +743,7 @@ class ClipViewer(QWidget):
     # ── folder ─────────────────────────────────────────────────────────────────
 
     def _open_folder(self):
+        import asyncio
         p = Path(os.path.expandvars(self.cfg['output_dir'])).expanduser()
         try:
             p.mkdir(parents=True, exist_ok=True)
@@ -750,23 +751,50 @@ class ClipViewer(QWidget):
             print(f'[Viewer] Could not create output folder: {e}')
             return
 
-        # Inside Flatpak, Qt routes this through org.freedesktop.portal.OpenURI automatically.
+        if os.path.exists('/.flatpak-info'):
+            asyncio.ensure_future(ClipViewer._portal_open_directory(p))
+            return
+
+        # Fora do sandbox: fallback normal
         ok = QDesktopServices.openUrl(QUrl.fromLocalFile(str(p.resolve())))
         if ok:
             return
-
-        if os.path.exists('/.flatpak-info'):
-            print('[Viewer] Could not open output folder via portal/Qt.')
-            return
-
         try:
-            subprocess.Popen(
-                ['xdg-open', str(p.resolve())],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
+            subprocess.Popen(['xdg-open', str(p.resolve())],
+                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except OSError as e:
             print(f'[Viewer] Could not open output folder: {e}')
+
+    @staticmethod
+    async def _portal_open_directory(path: Path):
+        import os
+        from dbus_next.aio import MessageBus
+        from dbus_next.message import Message
+        from dbus_next import BusType
+        fd = -1
+        try:
+            fd = os.open(str(path.resolve()), os.O_RDONLY | os.O_DIRECTORY)
+            bus = await MessageBus(bus_type=BusType.SESSION, negotiate_unix_fd=True).connect()
+            reply = await bus.call(Message(
+                destination = 'org.freedesktop.portal.Desktop',
+                path        = '/org/freedesktop/portal/desktop',
+                interface   = 'org.freedesktop.portal.OpenURI',
+                member      = 'OpenDirectory',
+                signature   = 'sha{sv}',
+                body        = ['', 0, {}],
+                unix_fds    = [fd],
+            ))
+            bus.disconnect()
+            if reply and reply.message_type.name == 'ERROR':
+                print(f'[Viewer] Portal OpenDirectory error: {reply.body}')
+            else:
+                print(f'[Viewer] Opened folder via portal: {path}')
+        except Exception as e:
+            print(f'[Viewer] Portal OpenDirectory failed: {e}')
+        finally:
+            if fd >= 0:
+                try: os.close(fd)
+                except OSError: pass
 
     # ── clip list ──────────────────────────────────────────────────────────────
 
