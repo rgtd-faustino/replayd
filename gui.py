@@ -9,6 +9,7 @@ and gives QVideoWidget its own native rendering surface (required on Wayland).
 """
 
 import asyncio
+import os
 import subprocess
 import time
 from pathlib import Path
@@ -751,11 +752,35 @@ class ReplaydWindow(QWidget):
 
     @staticmethod
     def _open_path(path: str):
+        resolved = Path(os.path.expandvars(path)).expanduser()
+        try:
+            resolved.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            print(f'[GUI] Could not create output folder: {e}')
+            return
+
         # Inside Flatpak, Qt routes this through org.freedesktop.portal.OpenURI automatically.
-        QDesktopServices.openUrl(QUrl.fromLocalFile(path))
+        ok = QDesktopServices.openUrl(QUrl.fromLocalFile(str(resolved.resolve())))
+        if ok:
+            return
+
+        # Keep Flatpak runs portal-only; use native fallback only outside sandbox.
+        if os.path.exists('/.flatpak-info'):
+            print('[GUI] Could not open output folder via portal/Qt.')
+            return
+
+        # Fallback for native environments where QDesktopServices has no handler.
+        try:
+            subprocess.Popen(
+                ['xdg-open', str(resolved.resolve())],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as e:
+            print(f'[GUI] Could not open output folder: {e}')
 
     def _open_folder(self):
-        self._open_path(str(Path(self.cfg['output_dir']).expanduser()))
+        self._open_path(self.cfg['output_dir'])
 
     def _open_clip(self, path: str):
         self._show_viewer(Path(path))

@@ -25,6 +25,7 @@ Audio notes
 
 from __future__ import annotations
 
+import os
 import subprocess
 from pathlib import Path
 from datetime import datetime
@@ -742,9 +743,30 @@ class ClipViewer(QWidget):
     # ── folder ─────────────────────────────────────────────────────────────────
 
     def _open_folder(self):
-        p = str(Path(self.cfg['output_dir']).expanduser())
+        p = Path(os.path.expandvars(self.cfg['output_dir'])).expanduser()
+        try:
+            p.mkdir(parents=True, exist_ok=True)
+        except OSError as e:
+            print(f'[Viewer] Could not create output folder: {e}')
+            return
+
         # Inside Flatpak, Qt routes this through org.freedesktop.portal.OpenURI automatically.
-        QDesktopServices.openUrl(QUrl.fromLocalFile(p))
+        ok = QDesktopServices.openUrl(QUrl.fromLocalFile(str(p.resolve())))
+        if ok:
+            return
+
+        if os.path.exists('/.flatpak-info'):
+            print('[Viewer] Could not open output folder via portal/Qt.')
+            return
+
+        try:
+            subprocess.Popen(
+                ['xdg-open', str(p.resolve())],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        except OSError as e:
+            print(f'[Viewer] Could not open output folder: {e}')
 
     # ── clip list ──────────────────────────────────────────────────────────────
 

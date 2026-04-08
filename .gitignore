@@ -30,6 +30,8 @@ __pycache__/
 
 .flatpak-builder/
 build-dir/
+builddir/
+repo/
 flatpak-pip-generator
 flatpak-pip-generator.py
 python3-modules.json
