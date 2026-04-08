@@ -1,10 +1,10 @@
 {
   "app-id": "io.github.rgtd_faustino.replayd",
   "runtime": "org.kde.Platform",
-  "runtime-version": "6.8",
+  "runtime-version": "6.9",
   "sdk": "org.kde.Sdk",
   "base": "com.riverbankcomputing.PyQt.BaseApp",
-  "base-version": "6.8",
+  "base-version": "6.9",
   "command": "replayd",
 
   "build-options": {
@@ -21,12 +21,8 @@
     "--filesystem=xdg-videos",
     "--filesystem=xdg-run/pipewire-0",
     "--talk-name=org.freedesktop.portal.Desktop",
-    "--talk-name=org.freedesktop.portal.GlobalShortcuts",
     "--talk-name=org.freedesktop.Notifications",
-    "--talk-name=org.pipewire.policy",
-    "--talk-name=org.freedesktop.portal.Request",
-    "--talk-name=org.freedesktop.portal.Session",
-    "--talk-name=org.freedesktop.portal.ScreenCast"
+    "--talk-name=org.pipewire.policy"
   ],
 
   "modules": [
@@ -105,7 +101,7 @@
       "sources": [
         {
           "type": "archive",
-          "url": "https://github.com/rgtd-faustino/replayd/archive/refs/tags/v1.4.8.tar.gz",
+          "url": "https://github.com/rgtd-faustino/replayd/archive/refs/tags/v1.4.9.tar.gz",
           "sha256": "41159166034a2d39654691bfcadd0778dba688982c8b325f65838eebae9b1bc8"
         }
       ]

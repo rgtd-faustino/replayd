@@ -1,4 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
+<!-- Copyright 2026 rgtd-faustino -->
 <component type="desktop-application">
   <id>io.github.rgtd_faustino.replayd</id>
 
@@ -11,8 +12,7 @@
   <description>
     <p>
       replayd runs a continuous recording buffer in the background and saves a
-      clip on demand — similar to NVIDIA ShadowPlay or AMD ReLive, but for any
-      Wayland compositor on Linux.
+      clip on demand for Linux
     </p>
     <p>Features:</p>
     <ul>
@@ -29,10 +29,16 @@
 
   <url type="homepage">https://github.com/rgtd-faustino/replayd</url>
   <url type="bugtracker">https://github.com/rgtd-faustino/replayd/issues</url>
+  <url type="vcs-browser">https://github.com/rgtd-faustino/replayd</url>
 
   <developer id="io.github.rgtd_faustino">
     <name>rgtd-faustino</name>
   </developer>
+
+  <branding>
+    <color type="primary" scheme_preference="light">#e8820c</color>
+    <color type="primary" scheme_preference="dark">#7a3d05</color>
+  </branding>
 
   <provides>
     <binary>replayd</binary>
@@ -68,20 +74,20 @@
   <screenshots>
     <screenshot type="default">
       <caption>Main window showing buffer state and recent clips</caption>
-      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/assets/main-window.png</image>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/v1.4.9/assets/main-window.png</image>
     </screenshot>
     <screenshot>
       <caption>Clip viewer with trim timeline and audio mixer</caption>
-      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/assets/clip-editor-window.png</image>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/v1.4.9/assets/clip-editor-window.png</image>
     </screenshot>
     <screenshot>
       <caption>Settings panel</caption>
-      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/main/assets/settings.png</image>
+      <image>https://raw.githubusercontent.com/rgtd-faustino/replayd/v1.4.9/assets/settings.png</image>
     </screenshot>
   </screenshots>
 
   <releases>
-    <release version="1.4.8" date="2026-04-07">
+    <release version="1.4.9" date="2026-04-07">
       <description>
         <p>Initial Flathub release.</p>
         <ul>
